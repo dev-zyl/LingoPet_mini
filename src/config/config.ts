@@ -204,6 +204,12 @@ interface MarketIndex {
   pets?: MarketPet[];
 }
 
+interface PetPreviewManifest {
+  id?: string;
+  displayName?: string;
+  animations?: Record<string, FrameAnimation>;
+}
+
 interface ProjectPet {
   id: string;
   displayName: string;
@@ -423,6 +429,7 @@ const state = {
 };
 
 let marketRequestSeq = 0;
+const marketManifestCache = new Map<string, Promise<PetPreviewManifest>>();
 let marketSearchTimer: number | null = null;
 
 function clearMarketSearchTimer(): void {
@@ -946,6 +953,237 @@ function marketPreviewSprite(pet: MarketPet): { url: string; lazy: boolean } {
   return { url: marketSpriteUrl(pet), lazy: true };
 }
 
+function normalizePreviewAnimation(value: unknown): FrameAnimation | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as Partial<FrameAnimation>;
+  const row = Number(item.row);
+  const frames = Number(item.frames);
+  if (!Number.isFinite(row) || row < 0 || !Number.isFinite(frames) || frames <= 0) return null;
+  const safeFrames = Math.min(ATLAS_COLS, Math.max(1, Math.floor(frames)));
+  const rawDurations = Array.isArray(item.frameDurations) ? item.frameDurations : [];
+  const frameDurations = Array.from({ length: safeFrames }, (_, index) => {
+    const duration = Number(rawDurations[index] ?? rawDurations[rawDurations.length - 1] ?? 140);
+    return Number.isFinite(duration) && duration > 0 ? Math.max(60, Math.floor(duration)) : 140;
+  });
+  return { row: Math.floor(row), frames: safeFrames, frameDurations };
+}
+
+function normalizePreviewAnimations(raw: unknown): Record<string, FrameAnimation> {
+  if (!raw || typeof raw !== "object") return {};
+  const animations: Record<string, FrameAnimation> = {};
+  Object.entries(raw as Record<string, unknown>).forEach(([key, value]) => {
+    const animation = normalizePreviewAnimation(value);
+    if (animation) animations[key] = animation;
+  });
+  return animations;
+}
+
+function defaultPreviewAnimations(): Record<string, FrameAnimation> {
+  return {
+    idle: { row: 0, frames: 6, frameDurations: [280, 110, 110, 140, 140, 320] },
+    walk: { row: 1, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
+    drag: { row: 2, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
+    touch: { row: 3, frames: 4, frameDurations: [140, 140, 140, 280] },
+    sleep: { row: 4, frames: 5, frameDurations: [140, 140, 140, 140, 280] },
+    jump: { row: 5, frames: 8, frameDurations: [140, 140, 140, 140, 140, 140, 140, 240] },
+    focus: { row: 6, frames: 6, frameDurations: [150, 150, 150, 150, 150, 260] },
+    music: { row: 7, frames: 6, frameDurations: [120, 120, 120, 120, 120, 220] },
+    merit: { row: 8, frames: 6, frameDurations: [150, 150, 150, 150, 150, 280] },
+  };
+}
+
+function previewActionLabel(key: string): string {
+  const labels: Record<string, string> = {
+    idle: "待机",
+    walk: "行走",
+    drag: "拖拽",
+    touch: "互动",
+    sleep: "睡觉",
+    jump: "跳跃",
+    focus: "专注",
+    music: "律动",
+    merit: "功德",
+  };
+  return labels[key] || key;
+}
+
+function previewActionOrder([key, animation]: [string, FrameAnimation]): number {
+  const baseOrder = ["idle", "walk", "drag", "touch", "sleep", "jump", "focus", "music", "merit"];
+  const index = baseOrder.indexOf(key);
+  return index >= 0 ? index : 100 + animation.row;
+}
+
+function loadMarketManifest(pet: MarketPet): Promise<PetPreviewManifest> {
+  const localPet = projectPetById(pet.id);
+  if (localPet) {
+    return Promise.resolve({
+      id: localPet.id,
+      displayName: localPet.displayName,
+      animations: normalizePreviewAnimations(localPet.animations),
+    });
+  }
+
+  const manifestUrl = marketManifestUrl(pet);
+  if (!manifestUrl) {
+    return Promise.resolve({ id: pet.id, displayName: petTitle(pet), animations: {} });
+  }
+
+  const cached = marketManifestCache.get(pet.id);
+  if (cached) return cached;
+
+  const request = fetch(manifestUrl, { cache: "force-cache" })
+    .then((response) => {
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      return response.json();
+    })
+    .then((data) => ({
+      id: String(data?.id || pet.id),
+      displayName: String(data?.displayName || petTitle(pet)),
+      animations: normalizePreviewAnimations(data?.animations),
+    }))
+    .catch((error) => {
+      marketManifestCache.delete(pet.id);
+      throw error;
+    });
+  marketManifestCache.set(pet.id, request);
+  return request;
+}
+
+function createActionPreviewSprite(spriteUrl: string, title: string, animation: FrameAnimation): HTMLDivElement {
+  const sprite = document.createElement("div");
+  sprite.className = "action-preview-sprite is-loading";
+  sprite.dataset.fallback = spriteFallbackText(title);
+  sprite.style.setProperty("--preview-row", String(animation.row));
+  sprite.style.setProperty("--preview-frame", "0");
+
+  let frame = 0;
+  let timer = 0;
+  const step = (): void => {
+    frame = (frame + 1) % animation.frames;
+    sprite.style.setProperty("--preview-frame", String(frame));
+    const delay = animation.frameDurations[frame] ?? animation.frameDurations[0] ?? 140;
+    timer = window.setTimeout(step, delay);
+  };
+
+  const image = new Image();
+  image.decoding = "async";
+  image.onload = () => {
+    sprite.style.backgroundImage = `url("${spriteUrl}")`;
+    sprite.classList.remove("is-loading", "is-fallback");
+    sprite.classList.add("is-loaded");
+    timer = window.setTimeout(step, animation.frameDurations[0] ?? 140);
+  };
+  image.onerror = () => {
+    sprite.classList.remove("is-loading");
+    sprite.classList.add("is-fallback");
+  };
+  image.src = spriteUrl;
+
+  sprite.addEventListener("remove", () => window.clearTimeout(timer), { once: true });
+  return sprite;
+}
+
+function stopActionPreviewSprites(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(".action-preview-sprite").forEach((sprite) => {
+    sprite.dispatchEvent(new Event("remove"));
+  });
+}
+
+function openMarketPetPreview(pet: MarketPet): void {
+  const preview = marketPreviewSprite(pet);
+  const overlay = document.createElement("div");
+  overlay.className = "action-preview-overlay";
+
+  const dialog = document.createElement("section");
+  dialog.className = "action-preview-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "action-preview-title");
+
+  const header = document.createElement("div");
+  header.className = "action-preview-header";
+
+  const copy = document.createElement("div");
+  const title = document.createElement("h3");
+  title.id = "action-preview-title";
+  title.textContent = petTitle(pet);
+  const subtitle = document.createElement("p");
+  subtitle.textContent = `ID: ${pet.id}`;
+  copy.append(title, subtitle);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "action-preview-close";
+  closeBtn.type = "button";
+  closeBtn.setAttribute("aria-label", "关闭");
+  closeBtn.textContent = "×";
+
+  const grid = document.createElement("div");
+  grid.className = "action-preview-grid";
+  const loading = document.createElement("p");
+  loading.className = "action-preview-status";
+  loading.textContent = "正在读取动作...";
+  grid.append(loading);
+
+  let closed = false;
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    stopActionPreviewSprites(dialog);
+    document.removeEventListener("keydown", handleKeydown);
+    overlay.remove();
+  };
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") close();
+  };
+
+  closeBtn.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener("keydown", handleKeydown);
+
+  header.append(copy, closeBtn);
+  dialog.append(header, grid);
+  overlay.append(dialog);
+  document.body.append(overlay);
+  closeBtn.focus();
+
+  void loadMarketManifest(pet)
+    .then((manifest) => {
+      if (closed) return;
+      const animations = normalizePreviewAnimations(manifest.animations);
+      const entries = Object.entries(Object.keys(animations).length ? animations : defaultPreviewAnimations())
+        .sort((a, b) => previewActionOrder(a) - previewActionOrder(b));
+
+      grid.replaceChildren();
+      entries.forEach(([key, animation]) => {
+        const card = document.createElement("article");
+        card.className = "action-preview-card";
+
+        const stage = document.createElement("div");
+        stage.className = "action-preview-stage";
+        stage.append(createActionPreviewSprite(preview.url, previewActionLabel(key), animation));
+
+        const name = document.createElement("strong");
+        name.textContent = previewActionLabel(key);
+        const meta = document.createElement("span");
+        meta.textContent = `${animation.frames} 帧`;
+
+        card.append(stage, name, meta);
+        grid.append(card);
+      });
+    })
+    .catch((error) => {
+      if (closed) return;
+      console.error(error);
+      grid.replaceChildren();
+      const errorText = document.createElement("p");
+      errorText.className = "action-preview-status error";
+      errorText.textContent = `动作读取失败：${error instanceof Error ? error.message : String(error)}`;
+      grid.append(errorText);
+    });
+}
+
 function pageItems<T>(items: T[], page: number): T[] {
   return items.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 }
@@ -1057,6 +1295,7 @@ function renderListRow(options: {
   subtitle: string;
   spriteUrl: string;
   lazySprite?: boolean;
+  onPreviewClick?: () => void;
   actions: HTMLElement[];
   titleExtra?: HTMLElement; // 新增的可选参数
   metaExtra?: HTMLElement;
@@ -1065,8 +1304,14 @@ function renderListRow(options: {
   const row = document.createElement("article");
   row.className = "pet-row";
 
-  const preview = document.createElement("div");
-  preview.className = "pet-preview";
+  const preview = options.onPreviewClick ? document.createElement("button") : document.createElement("div");
+  preview.className = options.onPreviewClick ? "pet-preview pet-preview-button" : "pet-preview";
+  if (options.onPreviewClick) {
+    (preview as HTMLButtonElement).type = "button";
+    preview.setAttribute("aria-label", `预览 ${options.title} 的全部动作`);
+    preview.title = "预览全部动作";
+    preview.addEventListener("click", options.onPreviewClick);
+  }
 
   if (options.customPreview) {
     preview.append(options.customPreview);
@@ -1181,6 +1426,7 @@ function renderMarket(totalPets: number = getMarketTotalCount()): void {
         subtitle: `ID: ${pet.id} · ${pet.version || "v1.0.0"} · 下载 ${marketDownloadCount(pet)}`,
         spriteUrl: preview.url,
         lazySprite: preview.lazy,
+        onPreviewClick: () => openMarketPetPreview(pet),
         actions: [button],
       }));
     }
