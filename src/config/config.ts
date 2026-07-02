@@ -882,7 +882,7 @@ function setView(view: ViewName): void {
   els.subtitle.textContent = copy[1];
 
   if (els.refresh) {
-    els.refresh.style.display = view === "mine" ? "" : "none";
+    els.refresh.style.display = view === "mine" || view === "market" ? "" : "none";
   }
   if (els.editorTopbarActions) {
     els.editorTopbarActions.style.display = view === "editor" ? "flex" : "none";
@@ -2403,13 +2403,17 @@ function renderOnlinePetCard(): void {
   }
 }
 
-async function fetchMarketPets(page = 1): Promise<void> {
+async function fetchMarketPets(page = 1, options: { forceRefresh?: boolean } = {}): Promise<void> {
   const requestSeq = ++marketRequestSeq;
   const filterKey = getMarketFilterKey();
   setStatus(els.marketStatus, "Loading pet market...");
   els.marketGrid.replaceChildren();
   state.marketPage = page;
   try {
+    if (options.forceRefresh) {
+      state.marketAllPets = [];
+      marketManifestCache.clear();
+    }
     if (state.marketAllPets.length === 0) {
       let lastError: Error | null = null;
       for (const endpoint of MARKET_INDEX_ENDPOINTS) {
@@ -2829,7 +2833,7 @@ els.mineSearch.addEventListener("input", () => {
   renderMyPets();
 });
 els.refresh.addEventListener("click", () => {
-  if (state.view === "market") void fetchMarketPets();
+  if (state.view === "market") void fetchMarketPets(1, { forceRefresh: true });
   if (state.view === "mine") void loadProjectPets();
   if (state.view === "settings") void loadSettings();
 });
