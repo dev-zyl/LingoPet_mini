@@ -32,12 +32,6 @@
             <path d="M7 9V7a5 5 0 0 1 10 0v2"></path>
             <path d="M5 9h14l-1 11H6L5 9Z"></path>
           </svg><span>宠物市场</span></button>
-        <button class="nav-item" data-view="workshop" type="button"><svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="m14 6 4 4"></path>
-            <path d="M5 19 19 5"></path>
-            <path d="M4 13 11 20"></path>
-            <path d="M13 4 20 11"></path>
-          </svg><span>创意工坊</span></button>
         <button class="nav-item" data-view="settings" type="button"><svg viewBox="0 0 24 24" aria-hidden="true">
             <path d="M12 8.5A3.5 3.5 0 1 0 12 15.5 3.5 3.5 0 0 0 12 8.5Z"></path>
             <path
@@ -142,7 +136,6 @@
                 <h3 id="editor-frame-title">帧编辑</h3>
                 <span class="workspace-badge">工作区</span>
               </div>
-              <button id="action-strip-share-btn" class="secondary-button editor-workshop-share" type="button" hidden>分享创意工坊</button>
               <p id="editor-current-pet-name" class="editor-current-pet-name">当前桌宠：-</p>
             </div>
             <div class="frame-stage-wrap">
@@ -273,33 +266,6 @@
         </div>
         <div id="market-grid" class="pet-table"></div>
         <div id="market-pagination" class="pagination"></div>
-      </section>
-
-      <section id="workshop-view" class="view">
-        <div class="workshop-sticky-controls">
-          <div class="workshop-local-topbar">
-            <h2>创意工坊</h2>
-            <p>下载并一键套用社区精选的功德、专注及律动扩展动作。</p>
-          </div>
-          <div class="toolbar">
-            <input id="workshop-search-input" type="search" placeholder="搜索动作名称或作者" />
-            <select id="workshop-action-filter">
-              <option value="all">全部模式</option>
-              <option value="focus">专注模式</option>
-              <option value="music">音乐律动</option>
-              <option value="merit">功德模式</option>
-            </select>
-          </div>
-          <div class="tags-section">
-            <div id="workshop-tags-list" class="tags-tabs">
-              <button class="tag-tab active" data-tag="all" type="button">全部动作</button>
-              <button class="tag-tab" data-tag="downloaded" type="button">已下载桌宠的扩展包</button>
-            </div>
-            <p id="workshop-status" class="status"></p>
-          </div>
-        </div>
-        <div id="workshop-grid" class="pet-table"></div>
-        <div id="workshop-pagination" class="pagination"></div>
       </section>
 
       <section id="settings-view" class="view">

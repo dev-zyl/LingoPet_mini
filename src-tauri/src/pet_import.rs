@@ -697,6 +697,106 @@ pub async fn download_pet_to_project(
     .map_err(|e| format!("Download task failed: {}", e))?
 }
 
+async fn download_limited_bytes(url: &str, max_bytes: usize, label: &str) -> Result<Vec<u8>, String> {
+    let url = reqwest::Url::parse(url).map_err(|e| format!("Invalid {label} URL: {e}"))?;
+    if !matches!(url.scheme(), "http" | "https") {
+        return Err(format!("{label} URL must use http or https"));
+    }
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(DOWNLOAD_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
+    let mut response = client
+        .get(url)
+        .header(ACCEPT_ENCODING, "identity")
+        .header(USER_AGENT, "LingoPet/1.0.0")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download {label}: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("{label} download failed: HTTP {}", response.status()));
+    }
+    if response
+        .content_length()
+        .is_some_and(|length| length > max_bytes as u64)
+    {
+        return Err(format!("{label} is too large"));
+    }
+
+    let mut bytes = Vec::new();
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|e| format!("Failed to read {label}: {e}"))?
+    {
+        if bytes.len() + chunk.len() > max_bytes {
+            return Err(format!("{label} is too large"));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    Ok(bytes)
+}
+
+#[tauri::command]
+pub async fn download_pet_assets_to_project(
+    app: AppHandle,
+    pet_id: String,
+    manifest_url: String,
+    spritesheet_url: String,
+) -> Result<ProjectPet, String> {
+    let pet_id = sanitize_id(&pet_id)?;
+    let existing_dir = project_pets_dir(&app)?.join(&pet_id);
+    if existing_dir.is_dir() {
+        return project_pet_from_dir(existing_dir);
+    }
+
+    let manifest_bytes =
+        download_limited_bytes(&manifest_url, MAX_PET_JSON_BYTES as usize, "pet manifest").await?;
+    let spritesheet_bytes =
+        download_limited_bytes(&spritesheet_url, MAX_SPRITESHEET_BYTES, "pet spritesheet").await?;
+    let manifest_content = String::from_utf8(manifest_bytes)
+        .map_err(|e| format!("Pet manifest is not valid UTF-8: {e}"))?;
+    let mut manifest = parse_pet_manifest(&manifest_content, Some(&pet_id))?;
+    manifest.id = pet_id.clone();
+
+    let spritesheet_file_name = reqwest::Url::parse(&spritesheet_url)
+        .ok()
+        .and_then(|url| {
+            url.path_segments()
+                .and_then(|mut segments| segments.next_back().map(ToString::to_string))
+        })
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or_else(|| "spritesheet.webp".to_string());
+    let spritesheet_path = normalize_manifest_path(&spritesheet_file_name)?;
+    manifest.spritesheet_path = spritesheet_path.to_string_lossy().to_string();
+
+    let app_for_write = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let pets = project_pets_dir(&app_for_write)?;
+        let tmp = pets.join(format!(".tmp-{pet_id}"));
+        if tmp.exists() {
+            let _ = fs::remove_dir_all(&tmp);
+        }
+        fs::create_dir_all(&tmp).map_err(|e| format!("Failed to create pet folder: {e}"))?;
+        let normalized_manifest = serde_json::to_string_pretty(&manifest)
+            .map_err(|e| format!("Failed to serialize pet.json: {e}"))?;
+        fs::write(tmp.join("pet.json"), format!("{normalized_manifest}\n"))
+            .map_err(|e| format!("Failed to write pet.json: {e}"))?;
+        fs::write(tmp.join(&manifest.spritesheet_path), spritesheet_bytes)
+            .map_err(|e| format!("Failed to write spritesheet: {e}"))?;
+
+        let dest = pets.join(&pet_id);
+        if dest.exists() {
+            let _ = fs::remove_dir_all(&tmp);
+            return project_pet_from_dir(dest);
+        }
+        fs::rename(&tmp, &dest).map_err(|e| format!("Failed to finalize pet assets: {e}"))?;
+        project_pet_from_dir(dest)
+    })
+    .await
+    .map_err(|e| format!("Pet asset download task failed: {e}"))?
+}
+
 fn project_pet_from_dir(dir: PathBuf) -> Result<ProjectPet, String> {
     let pet_json = dir.join("pet.json");
     let content =

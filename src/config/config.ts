@@ -17,7 +17,7 @@ import { relaunch } from "@tauri-apps/plugin-process";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 
 // ==========================================
-// 创意工坊 & 雪碧图编辑器 新增类型与全局常量
+// 雪碧图编辑器类型与全局常量
 // ==========================================
 interface EditorAction {
   name: string;
@@ -30,18 +30,6 @@ interface EditorAction {
   stripFrameCount?: number;
   stripOffsets?: { x: number; y: number }[];
   pendingFramePngSave?: boolean;
-}
-
-interface WorkshopItem {
-  petId: string;
-  actionType: string;
-  title: string;
-  author: string;
-  promptUsed: string;
-  framesCount: number;
-  frameDuration: number;
-  imageUrl: string;
-  metaPath?: string;
 }
 
 type ModeActionKey = "focus" | "music" | "merit";
@@ -100,12 +88,9 @@ Keep the wooden fish in the same position in all frames. Keep the mallet aligned
 
 const STUDIO_REFINE_URL = "https://studio.lingopet.xyz";
 
-const WORKSHOP_SHARE_API = "https://api.lingopet.xyz/api/share";
-const WORKSHOP_RAW_BASE = "https://raw.githubusercontent.com/dev-zyl/LingoPet-workshop/main/";
 const EMPTY_PETS_IMAGE = new URL("./empty-pets.png", import.meta.url).href;
 
 const LS_PET_ASSETS_VERSION = "pet_assets_version";
-const DEEP_LINK_ACTION_IMPORT_EVENT = "lingopet-action-import";
 const PET_WINDOW_STATE_CHANGED_EVENT = "pet-window-state-changed";
 
 const ATLAS_COLS = 8;
@@ -134,24 +119,19 @@ const MODE_ACTION_PRESETS: Record<ModeActionKey, ModeActionPreset> = {
   }
 };
 
-const DEFAULT_PREVIEW_ANIMATIONS: FrameAnimation[] = [
-  { row: 0, frames: 6, frameDurations: [280, 110, 110, 140, 140, 320] },
-  { row: 1, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
-  { row: 2, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
-  { row: 3, frames: 4, frameDurations: [140, 140, 140, 280] },
-  { row: 4, frames: 5, frameDurations: [140, 140, 140, 140, 280] },
-  { row: 5, frames: 8, frameDurations: [140, 140, 140, 140, 140, 140, 140, 240] },
-  { row: 6, frames: 6, frameDurations: [150, 150, 150, 150, 150, 260] },
-  { row: 7, frames: 6, frameDurations: [120, 120, 120, 120, 120, 220] },
-  { row: 8, frames: 6, frameDurations: [150, 150, 150, 150, 150, 280] },
-];
 
 
-const API_BASE = "https://codexpet.xyz";
 const DEEP_LINK_INSTALL_EVENT = "lingopet-install-result";
 const PAGE_SIZE = 30;
-const WORKSHOP_GROUPS_PER_PAGE = 6;
-const WORKSHOP_ACTION_ORDER = ["focus", "music", "merit"];
+const MARKET_REPO_OWNER = "dev-zyl";
+const MARKET_REPO_NAME = "LingoPet_mini_market";
+const MARKET_INDEX_PATH = "index.json";
+const MARKET_RAW_BASE = `https://raw.githubusercontent.com/${MARKET_REPO_OWNER}/${MARKET_REPO_NAME}/main/`;
+const MARKET_INDEX_ENDPOINTS = [
+  `${MARKET_RAW_BASE}${MARKET_INDEX_PATH}`,
+  `https://fastly.jsdelivr.net/gh/${MARKET_REPO_OWNER}/${MARKET_REPO_NAME}@main/${MARKET_INDEX_PATH}`,
+  `https://raw.gitmirror.com/${MARKET_REPO_OWNER}/${MARKET_REPO_NAME}/main/${MARKET_INDEX_PATH}`,
+];
 const LS_PET_SIZE_SCALE = "pet_size_scale";
 const LS_API_ENDPOINT = "pet_api_endpoint";
 const LS_API_KEY = "pet_api_key";
@@ -202,19 +182,26 @@ const BUILTIN_DORO_PET: ProjectPet = {
 const BUILTIN_PROJECT_PETS = [BUILTIN_DORO_PET];
 
 interface MarketPet {
-  slug: string;
-  display_name?: string;
+  id: string;
   displayName?: string;
   description?: string;
-  author_name?: string;
+  author?: string;
   version?: string;
-  download_count?: number;
-  downloadCount?: number;
-  downloadUrl?: string;
-  download_url?: string;
-  spritesheetUrl?: string;
-  spritesheet_url?: string;
   kind?: string;
+  tags?: string[];
+  updatedAt?: string;
+  order?: number;
+  downloadCount?: number;
+  previewUrl?: string;
+  manifestUrl?: string;
+  spritesheetUrl?: string;
+  zipUrl?: string;
+}
+
+interface MarketIndex {
+  schemaVersion?: number;
+  generatedAt?: string;
+  pets?: MarketPet[];
 }
 
 interface ProjectPet {
@@ -244,18 +231,8 @@ interface DeepLinkInstallResult {
   source?: string;
 }
 
-interface DeepLinkActionImportResult {
-  manifestUrl: string;
-  source?: string;
-}
 
-interface WorkshopImportManifest {
-  schemaVersion?: number;
-  createdTime?: string;
-  items?: WorkshopItem[];
-}
-
-type ViewName = "mine" | "recall" | "market" | "settings" | "editor" | "workshop";
+type ViewName = "mine" | "recall" | "market" | "settings" | "editor";
 type SortName = "hot" | "latest" | "downloads";
 
 const els = {
@@ -268,7 +245,6 @@ const els = {
     recall: document.getElementById("recall-view") as HTMLElement,
     market: document.getElementById("market-view") as HTMLElement,
     settings: document.getElementById("settings-view") as HTMLElement,
-    workshop: document.getElementById("workshop-view") as HTMLElement,
     editor: document.getElementById("editor-view") as HTMLElement,
   },
   marketSearch: document.getElementById("search-input") as HTMLInputElement,
@@ -333,13 +309,6 @@ const els = {
   onlinePetAction: document.getElementById("online-pet-action") as HTMLButtonElement,
   speechBubbleStyleRadios: [...document.querySelectorAll<HTMLInputElement>('input[name="speech-bubble-style"]')],
 
-  // 创意工坊
-  workshopGrid: document.getElementById("workshop-grid") as HTMLDivElement,
-  workshopPagination: document.getElementById("workshop-pagination") as HTMLDivElement,
-  workshopSearch: document.getElementById("workshop-search-input") as HTMLInputElement,
-  workshopActionFilter: document.getElementById("workshop-action-filter") as HTMLSelectElement,
-  workshopStatus: document.getElementById("workshop-status") as HTMLParagraphElement,
-
   // 雪碧图编辑器
   editorView: document.getElementById("editor-view") as HTMLElement,
   editorTopbarActions: document.getElementById("editor-topbar-actions") as HTMLDivElement,
@@ -384,7 +353,6 @@ const els = {
   actionStripUpload: document.getElementById("action-strip-upload-input") as HTMLInputElement,
   actionStripFrameCount: document.getElementById("action-strip-frame-count") as HTMLInputElement,
   actionStripImport: document.getElementById("action-strip-import-btn") as HTMLButtonElement,
-  actionStripShare: document.getElementById("action-strip-share-btn") as HTMLButtonElement,
   promptCopy: document.getElementById("prompt-copy-btn") as HTMLButtonElement,
   imagePromptOutput: document.getElementById("image-prompt-output") as HTMLTextAreaElement,
 
@@ -396,9 +364,9 @@ const state = {
   marketPage: 1,
   marketTotal: 0,
   marketFilterKey: "",
+  marketAllPets: [] as MarketPet[],
   minePage: 1,
   currentMineTag: "all" as string,
-  currentWorkshopTag: "all" as string, // 新增的创意工坊当前筛选标签
   marketPets: [] as MarketPet[],
   projectPets: [] as ProjectPet[],
   activePetWindows: [] as SummonedPetWindow[],
@@ -450,11 +418,6 @@ const state = {
   editorTransformUndoScaleSources: null as (HTMLCanvasElement | null)[] | null,
   editorTransformUndoRow: 0,
 
-  // 创意工坊
-  workshopItems: [] as WorkshopItem[],
-  workshopSearchQuery: "",
-  workshopFilterType: "all",
-  workshopPage: 1,
   availableUpdate: null as Update | null,
 
 };
@@ -477,15 +440,44 @@ function getMarketTotalCount(): number {
   return state.marketTotal || state.marketPets.length;
 }
 
-function readMarketTotal(data: any): number | null {
-  const total = Number(
-    data?.pagination?.totalItems ??
-    data?.pagination?.total ??
-    data?.totalItems ??
-    data?.total ??
-    data?.count
-  );
-  return Number.isFinite(total) && total > 0 ? total : null;
+function normalizeMarketPet(item: any): MarketPet | null {
+  const id = String(item?.id || item?.slug || "").trim();
+  if (!id) return null;
+  return {
+    id,
+    displayName: String(item?.displayName || item?.display_name || id).trim() || id,
+    description: item?.description ? String(item.description) : undefined,
+    author: item?.author ? String(item.author) : item?.author_name ? String(item.author_name) : undefined,
+    version: item?.version ? String(item.version) : undefined,
+    kind: item?.kind ? String(item.kind) : undefined,
+    tags: Array.isArray(item?.tags) ? item.tags.map((tag: unknown) => String(tag).trim()).filter(Boolean) : [],
+    updatedAt: item?.updatedAt ? String(item.updatedAt) : item?.updated_at ? String(item.updated_at) : undefined,
+    order: Number.isFinite(Number(item?.order)) ? Number(item.order) : 0,
+    downloadCount: Number.isFinite(Number(item?.downloadCount ?? item?.download_count)) ? Number(item.downloadCount ?? item.download_count) : 0,
+    previewUrl: item?.previewUrl ? String(item.previewUrl) : item?.preview_url ? String(item.preview_url) : undefined,
+    manifestUrl: item?.manifestUrl ? String(item.manifestUrl) : item?.manifest_url ? String(item.manifest_url) : undefined,
+    spritesheetUrl: item?.spritesheetUrl ? String(item.spritesheetUrl) : item?.spritesheet_url ? String(item.spritesheet_url) : undefined,
+    zipUrl: item?.zipUrl ? String(item.zipUrl) : item?.zip_url ? String(item.zip_url) : undefined,
+  };
+}
+
+function marketSearchText(pet: MarketPet): string {
+  return [pet.id, pet.displayName || "", pet.author || "", pet.description || "", ...(pet.tags || [])].join(" ").toLowerCase();
+}
+
+function sortedMarketPets(pets: MarketPet[]): MarketPet[] {
+  return [...pets].sort((a, b) => {
+    const nameSort = (a.displayName || a.id).localeCompare(b.displayName || b.id);
+    if (state.sort === "latest") return Date.parse(b.updatedAt || "") - Date.parse(a.updatedAt || "") || nameSort;
+    if (state.sort === "downloads") return marketDownloadCount(b) - marketDownloadCount(a) || nameSort;
+    return (b.order || 0) - (a.order || 0) || marketDownloadCount(b) - marketDownloadCount(a) || nameSort;
+  });
+}
+
+function filteredMarketPets(): MarketPet[] {
+  const query = els.marketSearch.value.trim().toLowerCase();
+  const pets = query ? state.marketAllPets.filter((pet) => marketSearchText(pet).includes(query)) : state.marketAllPets;
+  return sortedMarketPets(pets);
 }
 
 function isTauriRuntime(): boolean {
@@ -589,110 +581,12 @@ function showMessage(text: string, type: "success" | "error" | "info" = "info"):
   repositionMessages();
 }
 
-function showWorkshopSuccessDialog(title: string, message: string, detail?: string): void {
-  const overlay = document.createElement("div");
-  overlay.className = "workshop-result-overlay";
-
-  const dialog = document.createElement("section");
-  dialog.className = "workshop-result-dialog success";
-  dialog.setAttribute("role", "dialog");
-  dialog.setAttribute("aria-modal", "true");
-  dialog.setAttribute("aria-labelledby", "workshop-result-title");
-
-  const icon = document.createElement("div");
-  icon.className = "workshop-result-icon";
-  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>`;
-
-  const copy = document.createElement("div");
-  copy.className = "workshop-result-copy";
-
-  const eyebrow = document.createElement("p");
-  eyebrow.className = "workshop-result-eyebrow";
-  eyebrow.textContent = "创意工坊";
-
-  const heading = document.createElement("h3");
-  heading.id = "workshop-result-title";
-  heading.textContent = title;
-
-  const body = document.createElement("p");
-  body.textContent = message;
-  copy.append(eyebrow, heading, body);
-
-  if (detail) {
-    const detailEl = document.createElement("p");
-    detailEl.className = "workshop-result-detail";
-    detailEl.textContent = detail;
-    copy.append(detailEl);
-  }
-
-  const actions = document.createElement("div");
-  actions.className = "workshop-result-actions";
-
-  const okBtn = document.createElement("button");
-  okBtn.className = "primary-button workshop-result-primary";
-  okBtn.type = "button";
-  okBtn.textContent = "知道了";
-
-  const closeBtn = document.createElement("button");
-  closeBtn.className = "workshop-result-close";
-  closeBtn.type = "button";
-  closeBtn.setAttribute("aria-label", "关闭");
-  closeBtn.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"></path></svg>`;
-
-  const closeDialog = (): void => {
-    overlay.classList.remove("show");
-    overlay.addEventListener("transitionend", () => overlay.remove(), { once: true });
-  };
-
-  const handleKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") closeDialog();
-  };
-
-  okBtn.addEventListener("click", closeDialog);
-  closeBtn.addEventListener("click", closeDialog);
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeDialog();
-  });
-  overlay.addEventListener("transitionend", () => {
-    if (!overlay.classList.contains("show")) {
-      document.removeEventListener("keydown", handleKeydown);
-    }
-  });
-  document.addEventListener("keydown", handleKeydown);
-
-  actions.append(okBtn);
-  dialog.append(closeBtn, icon, copy, actions);
-  overlay.append(dialog);
-  document.body.append(overlay);
-  void overlay.offsetWidth;
-  overlay.classList.add("show");
-  okBtn.focus();
-}
-
 function setStatus(el: HTMLElement, message = "", isError = false): void {
   if (el) {
     el.textContent = message;
     el.classList.toggle("error", isError);
   }
-
-  if ((el === els.editorStatus || el === els.workshopStatus) && message.trim()) {
-    // 屏蔽进入创意工坊、搜索或分类过滤等被动产生的同步及统计提示气泡，杜绝弹窗堆叠
-    if (el === els.workshopStatus && (
-      message.includes("正在同步") ||
-      message.startsWith("共 ") ||
-      message.startsWith("已展示 ") ||
-      message.includes("未找到")
-    )) {
-      return;
-    }
-    // 屏蔽宠物编辑页面初始加载图集、切帧统计及普通单元格帧保存替换等被动/频闪气泡，杜绝弹窗堆叠
-    if (el === els.editorStatus && (
-      message.includes("正在加载") ||
-      message.startsWith("已切分") ||
-      message.startsWith("已替换第")
-    )) {
-      return;
-    }
+  if (el === els.editorStatus && message.trim()) {
     let type: "success" | "error" | "info" = "info";
     if (isError || message.includes("失败") || message.includes("错误") || message.includes("无法") || message.includes("不支持") || message.includes("已熔断")) {
       type = "error";
@@ -917,28 +811,28 @@ async function testApiConfig(): Promise<void> {
 }
 
 function petTitle(pet: MarketPet | ProjectPet): string {
-  if ("slug" in pet) return pet.display_name || pet.displayName || pet.slug;
+  if ("id" in pet && !("dir" in pet)) return pet.displayName || pet.id;
   return pet.displayName || pet.id;
 }
 
-function marketDownloadUrl(pet: MarketPet): string {
-  return pet.downloadUrl || pet.download_url || `${API_BASE}/api/pets/${pet.slug}/download`;
+function resolveMarketUrl(rawUrl: string | undefined): string {
+  const value = (rawUrl || "").trim();
+  if (!value) return "";
+  try { return new URL(value, MARKET_RAW_BASE).href; } catch { return ""; }
 }
 
-function marketSpriteUrl(pet: MarketPet): string {
-  return pet.spritesheetUrl || pet.spritesheet_url || `${API_BASE}/api/pets/${pet.slug}/spritesheet`;
-}
-
-function marketDownloadCount(pet: MarketPet): number {
-  return pet.download_count ?? pet.downloadCount ?? 0;
-}
+function marketDownloadUrl(pet: MarketPet): string { return resolveMarketUrl(pet.zipUrl); }
+function marketManifestUrl(pet: MarketPet): string { return resolveMarketUrl(pet.manifestUrl); }
+function marketSpritesheetUrl(pet: MarketPet): string { return resolveMarketUrl(pet.spritesheetUrl); }
+function marketSpriteUrl(pet: MarketPet): string { return resolveMarketUrl(pet.previewUrl || pet.spritesheetUrl); }
+function marketDownloadCount(pet: MarketPet): number { return pet.downloadCount ?? 0; }
 
 function projectPetById(petId: string): ProjectPet | undefined {
   return state.projectPets.find((pet) => pet.id === petId);
 }
 
-function isDownloaded(slug: string): boolean {
-  return Boolean(projectPetById(slug));
+function isDownloaded(petId: string): boolean {
+  return Boolean(projectPetById(petId));
 }
 
 function personalActionCount(pet: ProjectPet): number {
@@ -974,7 +868,6 @@ function setView(view: ViewName): void {
     editor: ["编辑桌宠", "自定义宠物动作。打造宠物专属技能"],
     recall: ["宠物召回", "查看当前存在的宠物，并支持单独或批量召回"],
     market: ["宠物市场", "海量线上社区桌宠，一键免费下载"],
-    workshop: ["创意工坊", "一键套用创意工坊精选的个性动作"],
     settings: ["设置", "桌宠设置、应用更新"],
   }[view];
   els.title.textContent = copy[0];
@@ -989,7 +882,6 @@ function setView(view: ViewName): void {
 
   if (view === "mine") void loadProjectPets();
   if (view === "recall") void loadActivePets();
-  if (view === "workshop") void fetchWorkshopItems();
   if (view === "settings") void loadSettings();
 }
 
@@ -1047,7 +939,7 @@ function projectPetSpriteUrl(pet: ProjectPet): string {
 }
 
 function marketPreviewSprite(pet: MarketPet): { url: string; lazy: boolean } {
-  const localPet = projectPetById(pet.slug);
+  const localPet = projectPetById(pet.id);
   if (localPet) {
     return { url: projectPetSpriteUrl(localPet), lazy: false };
   }
@@ -1168,7 +1060,7 @@ function renderListRow(options: {
   actions: HTMLElement[];
   titleExtra?: HTMLElement; // 新增的可选参数
   metaExtra?: HTMLElement;
-  customPreview?: HTMLElement; // 新增的自定义预览框（例如高清创意工坊动图）
+  customPreview?: HTMLElement;
 }): HTMLElement {
   const row = document.createElement("article");
   row.className = "pet-row";
@@ -1270,15 +1162,15 @@ function renderMarket(totalPets: number = getMarketTotalCount()): void {
     for (const pet of state.marketPets) {
       const button = document.createElement("button");
       button.type = "button";
-      const downloaded = isDownloaded(pet.slug);
-      const downloading = state.downloading.has(pet.slug);
+      const downloaded = isDownloaded(pet.id);
+      const downloading = state.downloading.has(pet.id);
       const preview = marketPreviewSprite(pet);
       button.className = downloaded ? "summon-button" : "download-button";
       button.textContent = downloaded ? "召唤" : downloading ? "下载中..." : "下载";
       button.disabled = downloading;
       button.addEventListener("click", () => {
         if (downloaded) {
-          void summonPet(pet.slug, button, null);
+          void summonPet(pet.id, button, null);
           return;
         }
         void downloadPet(pet);
@@ -1286,7 +1178,7 @@ function renderMarket(totalPets: number = getMarketTotalCount()): void {
 
       fragment.append(renderListRow({
         title: petTitle(pet),
-        subtitle: `ID: ${pet.slug} · ${pet.version || "v1.0.0"} · 下载 ${marketDownloadCount(pet)}`,
+        subtitle: `ID: ${pet.id} · ${pet.version || "v1.0.0"} · 下载 ${marketDownloadCount(pet)}`,
         spriteUrl: preview.url,
         lazySprite: preview.lazy,
         actions: [button],
@@ -2097,40 +1989,38 @@ function renderOnlinePetCard(): void {
 async function fetchMarketPets(page = 1): Promise<void> {
   const requestSeq = ++marketRequestSeq;
   const filterKey = getMarketFilterKey();
-  setStatus(els.marketStatus, "正在加载宠物市场...");
+  setStatus(els.marketStatus, "Loading pet market...");
   els.marketGrid.replaceChildren();
   state.marketPage = page;
   try {
-    const url = new URL("/api/pets", API_BASE);
-    url.searchParams.set("page", String(page));
-    url.searchParams.set("limit", String(PAGE_SIZE));
-    url.searchParams.set("sort", state.sort);
-    url.searchParams.set("locale", "zh");
-    const query = els.marketSearch.value.trim();
-    if (query) url.searchParams.set("q", query);
-
-    const data = await fetch(url).then((resp) => {
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    });
-    if (requestSeq !== marketRequestSeq) return;
-    state.marketPets = Array.isArray(data.pets) ? data.pets : [];
-    const reportedTotal = readMarketTotal(data);
-    const knownPageTotal = (page - 1) * PAGE_SIZE + state.marketPets.length;
-    if (reportedTotal !== null) {
-      state.marketTotal = reportedTotal;
-      state.marketFilterKey = filterKey;
-    } else if (state.marketFilterKey !== filterKey) {
-      state.marketTotal = state.marketTotal || knownPageTotal;
-      state.marketFilterKey = filterKey;
-    } else {
-      state.marketTotal = Math.max(state.marketTotal, knownPageTotal);
+    if (state.marketAllPets.length === 0) {
+      let lastError: Error | null = null;
+      for (const endpoint of MARKET_INDEX_ENDPOINTS) {
+        try {
+          const url = new URL(endpoint);
+          url.searchParams.set("t", String(Date.now()));
+          const data = await fetch(url, { cache: "no-store" }).then((resp) => {
+            if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+            return resp.json() as Promise<MarketIndex>;
+          });
+          state.marketAllPets = Array.isArray(data.pets) ? data.pets.map(normalizeMarketPet).filter((pet): pet is MarketPet => Boolean(pet)) : [];
+          break;
+        } catch (err) {
+          lastError = err instanceof Error ? err : new Error(String(err));
+        }
+      }
+      if (state.marketAllPets.length === 0 && lastError) throw lastError;
     }
+    if (requestSeq !== marketRequestSeq) return;
+    const filtered = filteredMarketPets();
+    state.marketTotal = filtered.length;
+    state.marketFilterKey = filterKey;
+    state.marketPets = pageItems(filtered, page);
     renderMarket(getMarketTotalCount());
   } catch (err) {
     if (requestSeq !== marketRequestSeq) return;
     console.error(err);
-    setStatus(els.marketStatus, "宠物市场加载失败，请检查网络后刷新。", true);
+    setStatus(els.marketStatus, "Pet market failed to load. Check your network and refresh.", true);
   }
 }
 
@@ -2180,178 +2070,9 @@ function setupDeepLinkInstallListener(): void {
   void listen<DeepLinkInstallResult>(DEEP_LINK_INSTALL_EVENT, (event) => {
     void handleDeepLinkInstallResult(event.payload);
   });
-  void listen<DeepLinkActionImportResult>(DEEP_LINK_ACTION_IMPORT_EVENT, (event) => {
-    void handleDeepLinkActionImportResult(event.payload);
-  });
   void listen(PET_WINDOW_STATE_CHANGED_EVENT, () => {
     void loadActivePets();
   });
-}
-
-const ACTION_IMPORT_ALLOWED_HOSTS = new Set([
-  "fastly.jsdelivr.net",
-  "cdn.jsdelivr.net",
-  "raw.githubusercontent.com",
-  "raw.gitmirror.com",
-]);
-const ACTION_IMPORT_LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
-
-function actionTypeLabel(actionType: string): string {
-  if (actionType === "focus") return "专注模式";
-  if (actionType === "music") return "音乐律动";
-  if (actionType === "merit") return "功德模式";
-  return actionType;
-}
-
-function isAllowedActionImportManifestUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    const isTrustedRemote = url.protocol === "https:" && ACTION_IMPORT_ALLOWED_HOSTS.has(url.hostname);
-    const isDevLocal = import.meta.env.DEV && url.protocol === "http:" && ACTION_IMPORT_LOCAL_HOSTS.has(url.hostname);
-    return (isTrustedRemote || isDevLocal) && url.pathname.includes("/handoffs/");
-  } catch {
-    return false;
-  }
-}
-
-function isAllowedActionImportImageUrl(rawUrl: string): boolean {
-  try {
-    const url = new URL(rawUrl);
-    return url.protocol === "https:" || (import.meta.env.DEV && url.protocol === "http:" && ACTION_IMPORT_LOCAL_HOSTS.has(url.hostname));
-  } catch {
-    return false;
-  }
-}
-
-function workshopImageUrlFromMetaPath(metaPath: string): string {
-  return `${WORKSHOP_RAW_BASE}${metaPath.replace(/\.json$/i, ".webp")}`;
-}
-
-function normalizeWorkshopImageUrl(item: Partial<WorkshopItem>): string {
-  const metaPath = String(item.metaPath || "");
-  if (metaPath.startsWith("patches/")) {
-    return workshopImageUrlFromMetaPath(metaPath);
-  }
-
-  const imageUrl = String(item.imageUrl || "");
-  return imageUrl
-    .replace("https://raw.gitmirror.com/ZhangYiLong416/vibepet-workshop/main/", WORKSHOP_RAW_BASE)
-    .replace("https://raw.githubusercontent.com/ZhangYiLong416/vibepet-workshop/main/", WORKSHOP_RAW_BASE)
-    .replace("https://raw.gitmirror.com/dev-zyl/LingoPet-workshop/main/", WORKSHOP_RAW_BASE);
-}
-
-function normalizeWorkshopImportItem(item: any, index: number): WorkshopItem {
-  const petId = String(item?.petId || "").trim().toLowerCase();
-  const actionType = String(item?.actionType || "").trim();
-  const title = String(item?.title || "").trim();
-  const author = String(item?.author || "anonymous").trim() || "anonymous";
-  const promptUsed = String(item?.promptUsed || "");
-  const imageUrl = normalizeWorkshopImageUrl(item);
-  const framesCount = Number(item?.framesCount);
-  const frameDuration = Number(item?.frameDuration || 120);
-
-  if (!petId) throw new Error(`第 ${index + 1} 条动作缺少 petId。`);
-  if (!["focus", "music", "merit"].includes(actionType)) throw new Error(`第 ${index + 1} 条动作类型无效。`);
-  if (!title) throw new Error(`第 ${index + 1} 条动作缺少标题。`);
-  if (!Number.isInteger(framesCount) || framesCount < 1 || framesCount > ATLAS_COLS) {
-    throw new Error(`第 ${index + 1} 条动作帧数必须在 1-${ATLAS_COLS} 之间。`);
-  }
-  if (!Number.isFinite(frameDuration) || frameDuration <= 0 || frameDuration > 2000) throw new Error(`第 ${index + 1} 条动作帧时长无效。`);
-  if (!isAllowedActionImportImageUrl(imageUrl)) {
-    throw new Error(`第 ${index + 1} 条动作图片地址无效。`);
-  }
-
-  return { petId, actionType, title, author, promptUsed, framesCount, frameDuration, imageUrl, metaPath: item?.metaPath };
-}
-
-async function fetchActionImportManifest(manifestUrl: string): Promise<WorkshopItem[]> {
-  if (!isAllowedActionImportManifestUrl(manifestUrl)) {
-    throw new Error("动作导入清单来源不受信任。");
-  }
-  const response = await fetch(manifestUrl, { cache: "no-store" });
-  if (!response.ok) throw new Error(`读取动作导入清单失败：HTTP ${response.status}`);
-  const manifest = await response.json() as WorkshopImportManifest;
-  if (!Array.isArray(manifest.items)) throw new Error("动作导入清单格式无效。");
-  return manifest.items.map(normalizeWorkshopImportItem);
-}
-
-async function handleDeepLinkActionImportResult(result: DeepLinkActionImportResult): Promise<void> {
-  try {
-    setStatus(els.mineStatus, "正在读取从 Sprite Studio 发布的动作清单...");
-    await loadProjectPets();
-    const items = await fetchActionImportManifest(result.manifestUrl);
-    if (items.length === 0) {
-      setStatus(els.mineStatus, "动作清单为空。", true);
-      return;
-    }
-
-    const importable: Array<{ item: WorkshopItem; pet: ProjectPet; overwrite: boolean }> = [];
-    const missing: WorkshopItem[] = [];
-    for (const item of items) {
-      const pet = projectPetById(item.petId);
-      if (!pet || pet.builtin) {
-        missing.push(item);
-        continue;
-      }
-      importable.push({
-        item,
-        pet,
-        overwrite: Boolean(pet.animations?.[item.actionType]),
-      });
-    }
-
-    const summary = [
-      `即将从 Sprite Studio 导入 ${importable.length} 个已发布动作到本地桌宠。`,
-      "",
-      ...importable.slice(0, 12).map(({ item, pet, overwrite }) => `- ${pet.displayName} / ${actionTypeLabel(item.actionType)}${overwrite ? "（覆盖已有动作）" : "（追加动作行）"}`),
-      importable.length > 12 ? `- 其余 ${importable.length - 12} 个动作...` : "",
-      missing.length ? "" : "",
-      missing.length ? `将跳过 ${missing.length} 个本地未安装或不可写的目标宠物。` : "",
-      "",
-      "是否继续写入本地桌宠？",
-    ].filter(Boolean).join("\n");
-
-    if (importable.length === 0) {
-      window.alert(`没有可导入的本地目标桌宠。\n\n${missing.map((item) => `${item.petId} / ${actionTypeLabel(item.actionType)}`).join("\n")}`);
-      setStatus(els.mineStatus, "未找到可导入的本地目标桌宠。", true);
-      return;
-    }
-    if (!window.confirm(summary)) {
-      setStatus(els.mineStatus, "已取消 Sprite Studio 动作导入。");
-      return;
-    }
-
-    setView("mine");
-    let successCount = 0;
-    const failures: string[] = [];
-    for (const { item, pet } of importable) {
-      try {
-        const latestPet = projectPetById(item.petId) || pet;
-        await applyCommunityActionToPet(item, latestPet, { quiet: true, statusEl: els.mineStatus });
-        successCount += 1;
-      } catch (error) {
-        failures.push(`${pet.displayName} / ${actionTypeLabel(item.actionType)}：${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-
-    await loadProjectPets();
-    const skippedText = missing.length ? `，跳过 ${missing.length} 个未安装目标` : "";
-    if (failures.length) {
-      window.alert(`已导入 ${successCount} 个动作${skippedText}，但有 ${failures.length} 个失败：\n\n${failures.slice(0, 8).join("\n")}`);
-      setStatus(els.mineStatus, `Sprite Studio 动作导入完成：成功 ${successCount} 个，失败 ${failures.length} 个${skippedText}。`, failures.length > 0);
-    } else {
-      showWorkshopSuccessDialog(
-        "动作已发布并写入本地",
-        `已成功导入 ${successCount} 个 Sprite Studio 动作。`,
-        `对应动作已经在创意工坊发布，并写入本地桌宠${skippedText}。`
-      );
-      setStatus(els.mineStatus, `Sprite Studio 动作导入完成：成功 ${successCount} 个${skippedText}。`);
-    }
-  } catch (err) {
-    console.error(err);
-    window.alert(`Sprite Studio 动作导入失败：${err instanceof Error ? err.message : String(err)}`);
-    setStatus(els.mineStatus, `Sprite Studio 动作导入失败：${err instanceof Error ? err.message : String(err)}`, true);
-  }
 }
 
 async function loadActivePets(): Promise<void> {
@@ -2496,19 +2217,24 @@ async function resetPetsStorageDir(): Promise<void> {
 }
 
 async function downloadPet(pet: MarketPet): Promise<void> {
-  state.downloading.add(pet.slug);
+  state.downloading.add(pet.id);
   renderMarket();
   try {
-    await invoke<ProjectPet>("download_pet_to_project", {
-      petId: pet.slug,
-      downloadUrl: marketDownloadUrl(pet),
-    });
+    const zipUrl = marketDownloadUrl(pet);
+    if (zipUrl) {
+      await invoke<ProjectPet>("download_pet_to_project", { petId: pet.id, downloadUrl: zipUrl });
+    } else {
+      const manifestUrl = marketManifestUrl(pet);
+      const spritesheetUrl = marketSpritesheetUrl(pet);
+      if (!manifestUrl || !spritesheetUrl) throw new Error("Market item is missing zipUrl or manifestUrl/spritesheetUrl.");
+      await invoke<ProjectPet>("download_pet_assets_to_project", { petId: pet.id, manifestUrl, spritesheetUrl });
+    }
     await loadProjectPets();
   } catch (err) {
     console.error(err);
-    setStatus(els.marketStatus, `下载失败：${err}`, true);
+    setStatus(els.marketStatus, `Download failed: ${err}`, true);
   } finally {
-    state.downloading.delete(pet.slug);
+    state.downloading.delete(pet.id);
     renderMarket();
   }
 }
@@ -2950,7 +2676,7 @@ els.toggleApiKeyVisibility.addEventListener("click", () => {
 
 
 // ==========================================
-// 雪碧图编辑器与创意工坊事件监听绑定
+// 雪碧图编辑器事件监听绑定
 // ==========================================
 els.editorBack.addEventListener("click", () => setView("mine"));
 els.editorSave.addEventListener("click", () => void saveSpriteEditor());
@@ -3204,37 +2930,6 @@ els.editorFrameCanvas.addEventListener("pointerleave", () => {
   if (state.editorEraserEnabled) hideEraserCursor();
 });
 
-// 创意工坊搜索与过滤事件
-els.workshopSearch.addEventListener("input", () => {
-  state.workshopSearchQuery = els.workshopSearch.value;
-  state.workshopPage = 1;
-  renderWorkshop();
-});
-
-els.workshopActionFilter.addEventListener("change", () => {
-  state.workshopFilterType = els.workshopActionFilter.value;
-  state.workshopPage = 1;
-  renderWorkshop();
-});
-
-document.addEventListener("click", (event) => {
-  closeActionContextMenu();
-  const tab = (event.target as HTMLElement).closest("#workshop-tags-list .tag-tab");
-  if (tab) {
-    const parent = document.getElementById("workshop-tags-list");
-    if (parent) {
-      const tabs = parent.querySelectorAll(".tag-tab");
-      tabs.forEach((t) => t.classList.remove("active"));
-      tab.classList.add("active");
-      state.currentWorkshopTag = tab.getAttribute("data-tag") || "all";
-      state.workshopPage = 1;
-      renderWorkshop();
-    }
-  }
-});
-
-// 分享按钮点击
-els.actionStripShare.addEventListener("click", () => void shareCurrentActionToCommunity());
 
 window.addEventListener("keydown", (event) => {
   if (event.key === "Escape") closeActionContextMenu();
@@ -3320,7 +3015,7 @@ initBubblePreviewImages();
 
 
 // ==========================================
-// 雪碧图编辑器 & 创意工坊核心扩展功能实现 (TS 完美版)
+// 雪碧图编辑器与本地动作扩展功能实现
 // ==========================================
 
 function z(): HTMLCanvasElement | null {
@@ -4082,14 +3777,7 @@ function actionHasContent(action: EditorAction): boolean {
   return action.frames.some((frame) => frameHasContent(frame));
 }
 
-function shouldShowWorkshopShareButton(action: EditorAction | undefined): boolean {
-  return Boolean(action?.key && action.key in MODE_ACTION_PRESETS && actionHasContent(action));
-}
 
-function updateWorkshopShareButtonState(): void {
-  const action = state.editorActions[state.editorSelectedRow];
-  els.actionStripShare.hidden = !shouldShowWorkshopShareButton(action);
-}
 
 function savableEditorActions(): EditorAction[] {
   return state.editorActions.filter((action, index) => index < DEFAULT_ACTION_NAMES.length || actionHasContent(action));
@@ -4989,1007 +4677,6 @@ function V(canvas: HTMLCanvasElement | null): void {
     if (canvas) ctx.drawImage(canvas, 0, 0);
   }
 }
-let activePreviewIntervals: number[] = [];
-
-interface WorkshopGroup {
-  petId: string;
-  itemsByAction: Record<string, WorkshopItem | undefined>;
-  complete: boolean;
-  firstIndex: number;
-}
-
-function workshopActionLabel(actionType: string): string {
-  if (actionType === "focus") return "专注模式";
-  if (actionType === "music") return "音乐律动";
-  if (actionType === "merit") return "功德模式";
-  return actionType || "未知模式";
-}
-
-function workshopDisplayName(item: WorkshopItem): string {
-  const modePattern = new RegExp(`\\s*[-–—]\\s*(${WORKSHOP_ACTION_ORDER.map(workshopActionLabel).join("|")})\\s*$`);
-  return item.title.replace(modePattern, "").trim() || item.title;
-}
-
-function workshopPetSearchTerms(item: WorkshopItem): string[] {
-  const displayName = workshopDisplayName(item);
-  return [...new Set([item.petId, displayName, displayName.toLowerCase()].map((term) => term.trim()).filter(Boolean))];
-}
-
-function findMarketPetForWorkshopItem(item: WorkshopItem, pets: MarketPet[]): MarketPet | null {
-  const itemPetId = item.petId.toLowerCase();
-  return pets.find((pet) => pet.slug.toLowerCase() === itemPetId)
-    || null;
-}
-
-async function fetchMarketPetForWorkshopItem(item: WorkshopItem): Promise<MarketPet | null> {
-  const cached = findMarketPetForWorkshopItem(item, state.marketPets);
-  if (cached) return cached;
-
-  for (const term of workshopPetSearchTerms(item)) {
-    const url = new URL("/api/pets", API_BASE);
-    url.searchParams.set("page", "1");
-    url.searchParams.set("limit", String(PAGE_SIZE));
-    url.searchParams.set("sort", state.sort);
-    url.searchParams.set("locale", "zh");
-    url.searchParams.set("q", term);
-
-    const data = await fetch(url, { cache: "no-store" }).then((resp) => {
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      return resp.json();
-    });
-    const pets = Array.isArray(data.pets) ? data.pets as MarketPet[] : [];
-    const found = findMarketPetForWorkshopItem(item, pets);
-    if (found) {
-      const knownSlugs = new Set(state.marketPets.map((pet) => pet.slug));
-      for (const pet of pets) {
-        if (!knownSlugs.has(pet.slug)) state.marketPets.push(pet);
-      }
-      return found;
-    }
-  }
-
-  return null;
-}
-
-function groupWorkshopItems(items: WorkshopItem[]): WorkshopGroup[] {
-  const buckets = new Map<string, { petId: string; firstIndex: number; byAction: Record<string, WorkshopItem[]> }>();
-
-  items.forEach((item, index) => {
-    const petId = (item.petId || "unknown").toLowerCase();
-    const group = buckets.get(petId) || { petId, firstIndex: index, byAction: {} };
-    group.byAction[item.actionType] = group.byAction[item.actionType] || [];
-    group.byAction[item.actionType].push(item);
-    group.firstIndex = Math.min(group.firstIndex, index);
-    buckets.set(petId, group);
-  });
-
-  const groups: WorkshopGroup[] = [];
-  for (const bucket of buckets.values()) {
-    const queues: Record<string, WorkshopItem[]> = {};
-    for (const actionType of Object.keys(bucket.byAction)) {
-      queues[actionType] = [...bucket.byAction[actionType]];
-    }
-
-    while (WORKSHOP_ACTION_ORDER.some((actionType) => (queues[actionType]?.length || 0) > 0)) {
-      const itemsByAction: Record<string, WorkshopItem | undefined> = {};
-      for (const actionType of WORKSHOP_ACTION_ORDER) {
-        itemsByAction[actionType] = queues[actionType]?.shift();
-      }
-
-      const usedItems = Object.values(itemsByAction).filter((item): item is WorkshopItem => Boolean(item));
-      groups.push({
-        petId: bucket.petId,
-        itemsByAction,
-        complete: WORKSHOP_ACTION_ORDER.every((actionType) => Boolean(itemsByAction[actionType])),
-        firstIndex: usedItems.length > 0 ? Math.min(...usedItems.map((item) => items.indexOf(item))) : bucket.firstIndex,
-      });
-    }
-  }
-
-  return groups
-    .sort((a, b) => Number(b.complete) - Number(a.complete) || a.firstIndex - b.firstIndex);
-}
-
-function createWorkshopPreview(item: WorkshopItem): HTMLDivElement {
-  const previewContainer = document.createElement("div");
-  previewContainer.className = "workshop-sprite-preview";
-  previewContainer.style.backgroundImage = `url("${item.imageUrl}")`;
-  previewContainer.style.backgroundRepeat = "no-repeat";
-  previewContainer.style.backgroundPosition = "0px 0px";
-  previewContainer.style.backgroundSize = `${item.framesCount * 88}px 95px`;
-  previewContainer.style.imageRendering = "pixelated";
-  previewContainer.style.transition = "none";
-  previewContainer.style.animation = "none";
-
-  let currentFrame = 0;
-  const interval = window.setInterval(() => {
-    currentFrame = (currentFrame + 1) % item.framesCount;
-    previewContainer.style.backgroundPositionX = `${-currentFrame * 88}px`;
-  }, item.frameDuration || 120);
-  activePreviewIntervals.push(interval);
-
-  return previewContainer;
-}
-
-function createWorkshopMetaRow(label: string, value: string, title?: string): HTMLDivElement {
-  const row = document.createElement("div");
-  row.className = "workshop-meta-row";
-
-  const labelEl = document.createElement("span");
-  labelEl.className = "workshop-meta-label";
-  labelEl.textContent = label;
-
-  const valueEl = document.createElement("span");
-  valueEl.className = "workshop-meta-value";
-  valueEl.textContent = value;
-  if (title || value) valueEl.title = title || value;
-
-  row.append(labelEl, valueEl);
-  return row;
-}
-
-function createWorkshopActionCard(item: WorkshopItem): HTMLElement {
-  const card = document.createElement("article");
-  card.className = `workshop-action-card ${item.actionType}`;
-
-  const body = document.createElement("div");
-  body.className = "workshop-card-body";
-
-  const info = document.createElement("div");
-  info.className = "workshop-card-info";
-
-  const titleRow = document.createElement("div");
-  titleRow.className = "workshop-card-title-row";
-
-  const title = document.createElement("h3");
-  title.textContent = workshopDisplayName(item);
-  title.title = item.title;
-
-  const modeBadge = document.createElement("span");
-  modeBadge.className = `workshop-mode-badge ${item.actionType}`;
-  modeBadge.textContent = workshopActionLabel(item.actionType);
-
-  titleRow.append(title, modeBadge);
-
-  info.append(
-    titleRow,
-    createWorkshopMetaRow("宠物ID", item.petId || "unknown"),
-    createWorkshopMetaRow("作者", item.author || "anonymous"),
-    createWorkshopMetaRow("帧数", `${item.framesCount} 帧`)
-  );
-
-  body.append(info, createWorkshopPreview(item));
-
-  const actions = document.createElement("div");
-  actions.className = "workshop-card-actions";
-
-  const applyBtn = document.createElement("button");
-  applyBtn.type = "button";
-  applyBtn.className = "workshop-card-button primary";
-  applyBtn.textContent = "一键套用";
-  applyBtn.addEventListener("click", () => void choosePetToApply(item));
-
-  actions.append(applyBtn);
-  card.append(body, actions);
-  return card;
-}
-
-// 2. 创意工坊核心动作列表渲染
-function renderWorkshop(): void {
-  activePreviewIntervals.forEach(clearInterval);
-  activePreviewIntervals = [];
-  els.workshopGrid.replaceChildren();
-  els.workshopPagination.replaceChildren();
-
-  const query = state.workshopSearchQuery.trim().toLowerCase();
-  const filterType = state.workshopFilterType;
-
-  // 根据搜索词和模式筛选动作
-  let filtered = state.workshopItems.filter((item) => {
-    const matchSearch =
-      !query ||
-      item.title.toLowerCase().includes(query) ||
-      (item.author && item.author.toLowerCase().includes(query));
-    const matchFilter = filterType === "all" || item.actionType === filterType;
-    return matchSearch && matchFilter;
-  });
-
-  // 如果筛选了“仅展示已下载桌宠的扩展包”（升级为大小写无关的强健安全过滤匹配）
-  if (state.currentWorkshopTag === "downloaded") {
-    const downloadedPetIds = new Set(state.projectPets.map((p) => p.id.toLowerCase()));
-    filtered = filtered.filter((item) => {
-      if (!item.petId) return false;
-      return downloadedPetIds.has(item.petId.toLowerCase());
-    });
-  }
-
-  if (filtered.length === 0) {
-    els.workshopGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; padding: 40px; color: rgba(120, 100, 80, 0.4); font-size: 14px;">未找到匹配的社区动作，刷新或清除条件重试</div>`;
-    setStatus(els.workshopStatus, "未找到匹配的社区动作。");
-    return;
-  }
-
-  const groups = groupWorkshopItems(filtered);
-  const completeGroups = groups.filter((group) => group.complete);
-  const incompleteGroups = groups.filter((group) => !group.complete);
-  const incompleteItems = incompleteGroups
-    .flatMap((group) => WORKSHOP_ACTION_ORDER.map((actionType) => group.itemsByAction[actionType]).filter((item): item is WorkshopItem => Boolean(item)))
-    .sort((a, b) => filtered.indexOf(a) - filtered.indexOf(b));
-  const completePages = Math.ceil(completeGroups.length / WORKSHOP_GROUPS_PER_PAGE);
-  const incompletePage = incompleteItems.length > 0 ? completePages + 1 : 0;
-  const pages = Math.max(1, completePages + (incompleteItems.length > 0 ? 1 : 0));
-  state.workshopPage = Math.min(state.workshopPage, pages);
-  const visibleGroups = state.workshopPage <= completePages
-    ? completeGroups.slice((state.workshopPage - 1) * WORKSHOP_GROUPS_PER_PAGE, state.workshopPage * WORKSHOP_GROUPS_PER_PAGE)
-    : [];
-  const visibleLooseItems = state.workshopPage === incompletePage || completePages === 0 ? incompleteItems : [];
-
-  // 动态更新筛选计数值！支持在切换选项卡时立即呈现精确的当前可用条数与差异化高特征提示！
-  if (state.currentWorkshopTag === "downloaded") {
-    setStatus(els.workshopStatus, `已展示 ${filtered.length} 个已下载桌宠的动作扩展包`);
-  } else {
-    setStatus(els.workshopStatus, `共 ${filtered.length} 个动作扩展包`);
-  }
-
-  els.workshopGrid.classList.add("workshop-board");
-  const fragment = document.createDocumentFragment();
-
-  for (const group of visibleGroups) {
-    const row = document.createElement("section");
-    row.className = `workshop-pet-row${group.complete ? " complete" : " incomplete"}`;
-    row.setAttribute("aria-label", `${group.petId} 的社区动作`);
-
-    for (const actionType of WORKSHOP_ACTION_ORDER) {
-      const item = group.itemsByAction[actionType];
-      if (item) row.append(createWorkshopActionCard(item));
-    }
-
-    fragment.append(row);
-  }
-
-  if (visibleLooseItems.length > 0) {
-    const looseGrid = document.createElement("section");
-    looseGrid.className = "workshop-loose-grid";
-    looseGrid.setAttribute("aria-label", "缺少部分模式的社区动作");
-    visibleLooseItems.forEach((item) => looseGrid.append(createWorkshopActionCard(item)));
-    fragment.append(looseGrid);
-  }
-
-  els.workshopGrid.append(fragment);
-  renderPagination(els.workshopPagination, pages * WORKSHOP_GROUPS_PER_PAGE, state.workshopPage, (page) => {
-    state.workshopPage = page;
-    renderWorkshop();
-  }, WORKSHOP_GROUPS_PER_PAGE);
-}
-
-// 获取动作与宠物的同名匹配度分值 (智能算法)
-function getMatchScore(itemTitle: string, pet: ProjectPet): number {
-  const titleLower = itemTitle.toLowerCase();
-  const petNameLower = pet.displayName.toLowerCase();
-  const petIdLower = pet.id.toLowerCase();
-
-  if (titleLower.includes(petNameLower) || petNameLower.includes(titleLower)) return 100;
-  if (titleLower.includes(petIdLower) || petIdLower.includes(titleLower)) return 90;
-
-  // 切词局部匹配
-  const words = petNameLower.split(/[\s\-_\(\)]+/).filter((w) => w.length > 1);
-  for (const word of words) {
-    if (titleLower.includes(word)) return 50;
-  }
-  return 0;
-}
-
-async function choosePetToApply(item: WorkshopItem): Promise<void> {
-  if (state.projectPets.length === 0 && state.marketPets.length === 0) {
-    window.alert("本地宠物及市场列表为空，请先检查网络或导入宠物。");
-    return;
-  }
-
-  const overlay = document.createElement("div");
-  overlay.className = "workshop-apply-overlay";
-
-  const modal = document.createElement("div");
-  modal.className = "workshop-apply-dialog";
-  modal.setAttribute("role", "dialog");
-  modal.setAttribute("aria-modal", "true");
-  modal.setAttribute("aria-labelledby", "workshop-apply-title");
-
-  let previewTimers: number[] = [];
-  const stopPreviewAnimations = (): void => {
-    previewTimers.forEach((timer) => window.clearTimeout(timer));
-    previewTimers = [];
-  };
-  const closeModal = (): void => {
-    stopPreviewAnimations();
-    document.removeEventListener("keydown", handleDialogKeydown);
-    overlay.remove();
-  };
-  const handleDialogKeydown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") closeModal();
-  };
-  overlay.addEventListener("click", (event) => {
-    if (event.target === overlay) closeModal();
-  });
-
-  const header = document.createElement("header");
-  header.className = "workshop-apply-header";
-
-  const eyebrow = document.createElement("p");
-  eyebrow.className = "workshop-apply-eyebrow";
-  eyebrow.textContent = "套用社区动作";
-
-  const title = document.createElement("h3");
-  title.id = "workshop-apply-title";
-  title.textContent = item.title;
-
-  const description = document.createElement("p");
-  description.className = "workshop-apply-description";
-  description.textContent = "选择套用目标。若原配桌宠尚未下载，可先下载后直接应用。";
-
-  header.append(eyebrow, title, description);
-
-  let localPets = state.projectPets.filter((p) => !p.builtin);
-  let exactLocalMatch = localPets.find((p) => p.id === item.petId);
-
-  let showVirtualItem = !exactLocalMatch;
-  let marketPet: MarketPet | null = null;
-  let isResolvingMarketPet = false;
-
-  if (showVirtualItem) {
-    marketPet = findMarketPetForWorkshopItem(item, state.marketPets);
-    if (!marketPet) isResolvingMarketPet = true;
-  }
-
-  let petsWithScores = localPets.map((pet) => ({
-    pet,
-    score: getMatchScore(item.title, pet) + (pet.id === item.petId ? 1000 : 0),
-  }));
-  petsWithScores.sort((a, b) => b.score - a.score);
-
-  let recommendedPet = exactLocalMatch || (petsWithScores[0]?.score > 0 ? petsWithScores[0].pet : null);
-  let hasMatchingPet = !!recommendedPet;
-  let selectedPet: ProjectPet | null = recommendedPet;
-
-  const searchField = document.createElement("label");
-  searchField.className = "workshop-apply-search";
-  const searchLabel = document.createElement("span");
-  searchLabel.textContent = "搜索本地桌宠";
-  const searchInput = document.createElement("input");
-  searchInput.type = "search";
-  searchInput.placeholder = "输入名称查找可套用的桌宠";
-  searchField.append(searchLabel, searchInput);
-
-  const list = document.createElement("div");
-  list.className = "workshop-apply-list";
-  list.setAttribute("aria-label", "可套用的桌宠列表");
-
-  const previewAnimations = new Map<string, FrameAnimation>();
-  const randomAnimationForPet = (pet: ProjectPet): FrameAnimation => {
-    const selectedAnimation = previewAnimations.get(pet.id);
-    if (selectedAnimation) return selectedAnimation;
-    const customAnimations = Object.values(pet.animations || {}) as FrameAnimation[];
-    const animations = [...DEFAULT_PREVIEW_ANIMATIONS, ...customAnimations].filter((animation) => animation.frames > 0);
-    const animation = animations[Math.floor(Math.random() * animations.length)] || DEFAULT_PREVIEW_ANIMATIONS[0];
-    previewAnimations.set(pet.id, animation);
-    return animation;
-  };
-
-  const createAvatar = (
-    src: string,
-    name: string,
-    animation: FrameAnimation,
-    columns: number = ATLAS_COLS,
-  ): HTMLElement => {
-    const avatar = document.createElement("div");
-    avatar.className = "workshop-apply-avatar";
-    const sprite = document.createElement("div");
-    sprite.className = "workshop-apply-sprite";
-    sprite.style.backgroundImage = `url("${src}")`;
-    sprite.style.backgroundSize = `${Math.max(1, columns) * 48}px auto`;
-    sprite.setAttribute("role", "img");
-    sprite.setAttribute("aria-label", `${name} 动作预览`);
-
-    let frame = 0;
-    const drawFrame = (): void => {
-      sprite.style.backgroundPosition = `${-frame * 48}px ${-animation.row * 52}px`;
-    };
-    const advance = (): void => {
-      frame = (frame + 1) % animation.frames;
-      drawFrame();
-      const delay = animation.frameDurations[frame] || animation.frameDurations[animation.frameDurations.length - 1] || 140;
-      previewTimers.push(window.setTimeout(advance, delay));
-    };
-    drawFrame();
-    previewTimers.push(window.setTimeout(advance, animation.frameDurations[0] || 140));
-    avatar.append(sprite);
-    return avatar;
-  };
-
-  const createMatchBadge = (text: string, variant: string): HTMLElement => {
-    const badge = document.createElement("span");
-    badge.className = `workshop-match-badge ${variant}`;
-    badge.textContent = text;
-    return badge;
-  };
-
-  const renderList = (filterQuery = "") => {
-    stopPreviewAnimations();
-    list.replaceChildren();
-
-    const virtualMatched = showVirtualItem && (
-      !filterQuery ||
-      item.petId.toLowerCase().includes(filterQuery) ||
-      workshopDisplayName(item).toLowerCase().includes(filterQuery) ||
-      Boolean(marketPet?.display_name?.toLowerCase().includes(filterQuery))
-    );
-
-    if (virtualMatched) {
-      const petRow = document.createElement("div");
-      petRow.className = "workshop-apply-pet download-required";
-
-      const infoBox = document.createElement("div");
-      infoBox.className = "workshop-apply-pet-info";
-
-      const nameEl = document.createElement("div");
-      nameEl.className = "workshop-apply-pet-name";
-      const petName = document.createElement("strong");
-      petName.textContent = marketPet?.display_name || workshopDisplayName(item);
-      nameEl.append(petName, createMatchBadge(marketPet ? "原配 · 待下载" : isResolvingMarketPet ? "原配 · 查找中" : "原配 · 未上架", "pending"));
-
-      const idEl = document.createElement("div");
-      idEl.className = "workshop-apply-pet-meta";
-      idEl.textContent = marketPet
-        ? "下载原配桌宠后即可应用该动作"
-        : isResolvingMarketPet
-          ? "正在从市场查找原配桌宠..."
-        : "暂未在市场找到原配桌宠，可选择本地其他桌宠手动套用";
-
-      infoBox.append(nameEl, idEl);
-
-      const downloadBtn = document.createElement("button");
-      downloadBtn.className = "primary-button workshop-download-button";
-      downloadBtn.type = "button";
-      downloadBtn.textContent = marketPet ? "下载原配桌宠" : isResolvingMarketPet ? "查找中..." : "原配暂不可下载";
-      downloadBtn.disabled = !marketPet || isResolvingMarketPet;
-
-      let isDownloading = false;
-      downloadBtn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (!marketPet) return;
-        if (isDownloading) return;
-        isDownloading = true;
-        downloadBtn.disabled = true;
-        downloadBtn.textContent = "下载中...";
-        try {
-          await invoke<ProjectPet>("download_pet_to_project", {
-            petId: marketPet.slug,
-            downloadUrl: marketDownloadUrl(marketPet),
-          });
-
-          await loadProjectPets();
-
-          localPets = state.projectPets.filter((p) => !p.builtin);
-          exactLocalMatch = localPets.find((p) => p.id === item.petId);
-
-          petsWithScores = localPets.map((pet) => ({
-            pet,
-            score: getMatchScore(item.title, pet) + (pet.id === item.petId ? 1000 : 0),
-          }));
-          petsWithScores.sort((a, b) => b.score - a.score);
-
-          recommendedPet = exactLocalMatch || (petsWithScores[0]?.score > 0 ? petsWithScores[0].pet : null);
-          hasMatchingPet = !!recommendedPet;
-
-          showVirtualItem = false;
-          selectedPet = exactLocalMatch || null;
-
-          renderList(searchInput.value.trim().toLowerCase());
-          updateConfirmButtonState();
-        } catch (err) {
-          console.error(err);
-          window.alert(`下载失败：${err}`);
-          downloadBtn.disabled = false;
-          downloadBtn.textContent = "下载原配桌宠";
-          isDownloading = false;
-        }
-      });
-
-      const actionPreview: FrameAnimation = {
-        row: 0,
-        frames: item.framesCount,
-        frameDurations: Array.from({ length: item.framesCount }, () => item.frameDuration),
-      };
-      petRow.append(createAvatar(item.imageUrl, marketPet?.display_name || item.petId, actionPreview, item.framesCount), infoBox, downloadBtn);
-      list.append(petRow);
-    }
-
-    const filteredPets = petsWithScores.filter((entry) => {
-      return (
-        !filterQuery ||
-        entry.pet.displayName.toLowerCase().includes(filterQuery) ||
-        entry.pet.id.toLowerCase().includes(filterQuery)
-      );
-    });
-
-    if (filteredPets.length === 0 && !virtualMatched) {
-      const hint = document.createElement("p");
-      hint.className = "workshop-apply-empty";
-      hint.textContent = "未找到匹配的本地宠物。";
-      list.append(hint);
-      return;
-    }
-
-    filteredPets.forEach((entry) => {
-      const { pet } = entry;
-      const isRecommended = recommendedPet && pet.id === recommendedPet.id;
-      const isSelected = selectedPet && pet.id === selectedPet.id;
-
-      const petRow = document.createElement("button");
-      petRow.className = "workshop-apply-pet selectable";
-      petRow.classList.toggle("selected", Boolean(isSelected));
-      petRow.classList.toggle("recommended", Boolean(isRecommended));
-      petRow.type = "button";
-      petRow.setAttribute("aria-pressed", String(Boolean(isSelected)));
-
-      const infoBox = document.createElement("div");
-      infoBox.className = "workshop-apply-pet-info";
-
-      const nameEl = document.createElement("div");
-      nameEl.className = "workshop-apply-pet-name";
-      const name = document.createElement("strong");
-      name.textContent = pet.displayName;
-      nameEl.append(name);
-
-      if (isSelected) {
-        if (isRecommended) {
-          nameEl.append(createMatchBadge("推荐原配 · 已选中", "selected"));
-        } else {
-          nameEl.append(createMatchBadge("已选中", "selected"));
-        }
-      } else if (isRecommended) {
-        nameEl.append(createMatchBadge("推荐原配", "recommend"));
-      }
-
-      const idEl = document.createElement("div");
-      idEl.className = "workshop-apply-pet-meta";
-      idEl.textContent = pet.id;
-
-      infoBox.append(nameEl, idEl);
-      petRow.append(createAvatar(projectPetSpriteUrl(pet), pet.displayName, randomAnimationForPet(pet)), infoBox);
-
-      petRow.addEventListener("click", () => {
-        selectedPet = pet;
-        renderList(searchInput.value.trim().toLowerCase());
-        updateConfirmButtonState();
-      });
-
-      list.append(petRow);
-    });
-  };
-
-  renderList();
-
-  if (showVirtualItem && isResolvingMarketPet) {
-    void fetchMarketPetForWorkshopItem(item)
-      .then((found) => {
-        marketPet = found;
-        isResolvingMarketPet = false;
-        if (!found) {
-          console.warn(`创意工坊动作 ${item.petId} 未在市场中找到原配桌宠。`);
-        }
-        renderList(searchInput.value.trim().toLowerCase());
-      })
-      .catch((error) => {
-        isResolvingMarketPet = false;
-        console.warn("创意工坊查找原配桌宠失败：", error);
-        renderList(searchInput.value.trim().toLowerCase());
-      });
-  }
-
-  searchInput.addEventListener("input", () => {
-    renderList(searchInput.value.trim().toLowerCase());
-  });
-
-  const actionRow = document.createElement("div");
-  actionRow.className = "workshop-apply-actions";
-
-  const cancelBtn = document.createElement("button");
-  cancelBtn.className = "secondary-button workshop-apply-action";
-  cancelBtn.type = "button";
-  cancelBtn.textContent = "取消";
-  cancelBtn.addEventListener("click", () => closeModal());
-
-  const confirmBtn = document.createElement("button");
-  confirmBtn.className = "primary-button workshop-apply-action";
-  confirmBtn.type = "button";
-  confirmBtn.textContent = "应用";
-
-  const updateConfirmButtonState = () => {
-    confirmBtn.disabled = !selectedPet;
-  };
-
-  confirmBtn.addEventListener("click", () => {
-    if (!selectedPet) {
-      window.alert("请先选择要套用动作的目标桌宠！");
-      return;
-    }
-
-    const isRecommended = recommendedPet && selectedPet.id === recommendedPet.id;
-    if (hasMatchingPet && !isRecommended) {
-      const proceed = window.confirm(
-        `⚠️ 【跨宠物套用温馨提示】\n\n您当前选中的套用目标为非同名宠物：「${selectedPet.displayName}」。\n\n由于不同角色的原雪碧图结构、身体缩放偏移以及各个模式动作的帧数与此社区动作不一致，非同名跨宠物强行套用可能会导致后续画面出现错位、缩放混乱或播放异常！\n\n您确定要继续套用此动作到「${selectedPet.displayName}」吗？`
-      );
-      if (!proceed) return;
-    }
-
-    closeModal();
-    void applyCommunityActionToPet(item, selectedPet);
-  });
-
-  updateConfirmButtonState();
-
-  actionRow.append(cancelBtn, confirmBtn);
-  modal.append(header, searchField, list, actionRow);
-  overlay.append(modal);
-  document.body.append(overlay);
-  document.addEventListener("keydown", handleDialogKeydown);
-  searchInput.focus();
-}
-
-async function applyCommunityActionToPet(item: WorkshopItem, pet: ProjectPet, options: { quiet?: boolean; statusEl?: HTMLElement } = {}): Promise<void> {
-  const statusEl = options.statusEl || els.workshopStatus;
-  setStatus(statusEl, `正在为 ${pet.displayName} 下载并写入「${item.title}」动作...`);
-  try {
-    const image = await loadImageElement(item.imageUrl);
-    const origImage = await loadSpritesheetImage(pet);
-
-    const origCols = ATLAS_COLS;
-    const origRows = Math.max(1, Math.floor(origImage.height / ATLAS_CELL_HEIGHT));
-    const animations = pet.animations || {};
-    let targetRow = 0;
-    let isNewRow = false;
-
-    if (animations[item.actionType]) {
-      targetRow = animations[item.actionType].row;
-    } else {
-      targetRow = origRows;
-      isNewRow = true;
-    }
-
-    const newRows = isNewRow ? origRows + 1 : origRows;
-    const canvas = document.createElement("canvas");
-    canvas.width = origCols * ATLAS_CELL_WIDTH;
-    canvas.height = newRows * ATLAS_CELL_HEIGHT;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("无法创建画板。");
-
-    ctx.drawImage(origImage, 0, 0);
-    ctx.clearRect(0, targetRow * ATLAS_CELL_HEIGHT, canvas.width, ATLAS_CELL_HEIGHT);
-    ctx.drawImage(image, 0, 0, image.width, image.height, 0, targetRow * ATLAS_CELL_HEIGHT, item.framesCount * ATLAS_CELL_WIDTH, ATLAS_CELL_HEIGHT);
-
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((result) => result ? resolve(result) : reject(new Error("WebP 转换失败")), "image/webp", 0.96);
-    });
-    const bytes = Array.from(new Uint8Array(await blob.arrayBuffer()));
-
-    const nextAnimations = { ...animations };
-    nextAnimations[item.actionType] = {
-      row: targetRow,
-      frames: item.framesCount,
-      frameDurations: Array.from({ length: item.framesCount }, () => item.frameDuration)
-    };
-
-    const updatedPet = await invoke<ProjectPet>("save_project_pet_spritesheet", {
-      petId: pet.id,
-      bytes,
-      animations: nextAnimations
-    });
-
-    localStorage.setItem(LS_PET_ASSETS_VERSION, String(Date.now()));
-    const index = state.projectPets.findIndex((p) => p.id === pet.id);
-    if (index >= 0) state.projectPets[index] = updatedPet;
-
-    if (!options.quiet) {
-      showWorkshopSuccessDialog(
-        "动作套用成功",
-        `「${item.title}」已集成到「${pet.displayName}」。`,
-        "召唤这只桌宠后，它会在对应模式下自动播放新动作。"
-      );
-    }
-    setStatus(statusEl, `成功将「${item.title}」动作套用到 ${pet.displayName}！`);
-  } catch (err) {
-    console.error(err);
-    const message = `套用动作失败：${err instanceof Error ? err.message : String(err)}`;
-    setStatus(statusEl, message, true);
-    if (options.quiet) throw err;
-    window.alert(message);
-  }
-}
-
-async function fetchWorkshopItems(): Promise<void> {
-  setStatus(els.workshopStatus, "正在同步云端创意工坊动作包...");
-
-  // 动作索引是静态内容，按可用性在三个公共分发源之间回退。
-  const endpoints = [
-    "https://raw.githubusercontent.com/dev-zyl/LingoPet-workshop/main/patches/index.json",
-    "https://fastly.jsdelivr.net/gh/dev-zyl/LingoPet-workshop@main/patches/index.json",
-    "https://raw.gitmirror.com/dev-zyl/LingoPet-workshop/main/patches/index.json"
-  ];
-
-  let lastError: Error | null = null;
-  let successData: any = null;
-
-  for (let i = 0; i < endpoints.length; i++) {
-    const apiBase = endpoints[i];
-    try {
-      const listUrl = new URL(apiBase);
-      listUrl.searchParams.set("t", String(Date.now())); // 追加随机时间戳，彻底击穿 WebView/CDN 本地缓存
-
-      const resp = await fetch(listUrl, { cache: "no-store" });
-      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-      const data = await resp.json();
-      if (Array.isArray(data)) {
-        successData = data;
-        break; // 成功拉取到合规 of 数组结构，终止轮询！
-      } else {
-        throw new Error("数据格式不合规");
-      }
-    } catch (err) {
-      console.warn(`创意工坊通道 [${apiBase}] 同步受阻，正在自动跳转备用熔断降级通道...`, err);
-      lastError = err instanceof Error ? err : new Error(String(err));
-    }
-  }
-
-  if (successData !== null) {
-    // 【殿堂级源头数据清洗与防白板网络拦截】
-    // 将所有 item.imageUrl 中的 raw.githubusercontent.com 无缝转化为极速稳定的 GitMirror 加速域名！
-    // 彻底防范和消除了接下来在渲染动图预览和执行“一键套用”网络下载 WebP 时因直连 GitHub 发生 Failed to fetch 的惨剧！
-    state.workshopItems = successData.map((item: any) => ({
-      ...item,
-      imageUrl: normalizeWorkshopImageUrl(item),
-    }));
-    state.workshopPage = 1;
-
-    setStatus(els.workshopStatus, `共 ${state.workshopItems.length} 个动作扩展包。`);
-    renderWorkshop();
-  } else {
-    console.error("创意工坊所有高可用同步通道均告折戟：", lastError);
-    setStatus(
-      els.workshopStatus,
-      `创意工坊同步失败：所有网络通道已熔断。请检查本地网络或关闭代理防火墙安全拦截。(错误：${lastError ? lastError.message : "未知"})`,
-      true
-    );
-  }
-}
-
-// ==========================================
-// 创意工坊动作分享功能实现 (TS 完美版)
-// ==========================================
-async function shareCurrentActionToCommunity(): Promise<void> {
-  const action = state.editorActions[state.editorSelectedRow];
-  if (!action || !state.editorPet) {
-    window.alert("请先选择左侧要分享的动作。");
-    return;
-  }
-
-  if (!action.key || !(action.key in MODE_ACTION_PRESETS)) {
-    window.alert("仅支持分享功德模式、专注模式及音乐律动三类精选模式动作。");
-    return;
-  }
-
-  const contentFrames = action.frames.filter((frame) => frameHasContent(frame)) as HTMLCanvasElement[];
-  if (contentFrames.length === 0) {
-    window.alert("此动作还没有可分享的帧，请先导入或绘制至少一帧。");
-    return;
-  }
-  const framesCount = contentFrames.length;
-  const frames = contentFrames;
-
-  const defaultTitle = `${state.editorPet.displayName} - ${action.name}`;
-  const defaultAuthor = localStorage.getItem("workshop_author") || "";
-
-  const shareMeta = await new Promise<{ author: string; description: string } | null>((resolve) => {
-    const overlay = document.createElement("div");
-    overlay.style.position = "fixed";
-    overlay.style.top = "0";
-    overlay.style.left = "0";
-    overlay.style.width = "100%";
-    overlay.style.height = "100%";
-    overlay.style.backgroundColor = "rgba(0,0,0,0.6)";
-    overlay.style.backdropFilter = "blur(10px)";
-    overlay.style.zIndex = "9999";
-    overlay.style.display = "flex";
-    overlay.style.justifyContent = "center";
-    overlay.style.alignItems = "center";
-
-    const modal = document.createElement("div");
-    modal.className = "editor-card";
-    modal.style.width = "400px";
-    modal.style.padding = "24px";
-    modal.style.borderRadius = "12px";
-    modal.style.background = "rgba(30, 30, 40, 0.95)";
-    modal.style.border = "1px solid rgba(255,255,255,0.1)";
-
-    const titleEl = document.createElement("h3");
-    titleEl.style.margin = "0 0 20px 0";
-    titleEl.style.fontSize = "18px";
-    titleEl.style.color = "#fff";
-    titleEl.textContent = "分享动作到社区";
-
-    const nameGroup = document.createElement("div");
-    nameGroup.style.marginBottom = "16px";
-    const nameLabel = document.createElement("label");
-    nameLabel.textContent = "分享动作补丁名称 (自动生成)";
-    nameLabel.style.display = "block";
-    nameLabel.style.fontSize = "12px";
-    nameLabel.style.color = "rgba(255, 255, 255, 0.6)";
-    nameLabel.style.marginBottom = "6px";
-    const nameInput = document.createElement("input");
-    nameInput.type = "text";
-    nameInput.value = defaultTitle;
-    nameInput.disabled = true;
-    nameInput.style.width = "100%";
-    nameInput.style.padding = "10px 12px";
-    nameInput.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
-    nameInput.style.border = "1px solid rgba(255, 255, 255, 0.1)";
-    nameInput.style.borderRadius = "8px";
-    nameInput.style.color = "rgba(255, 255, 255, 0.4)";
-    nameInput.style.cursor = "not-allowed";
-    nameInput.style.boxSizing = "border-box";
-    nameGroup.append(nameLabel, nameInput);
-
-    const authorGroup = document.createElement("div");
-    authorGroup.style.marginBottom = "16px";
-    const authorLabel = document.createElement("label");
-    authorLabel.textContent = "作者昵称 (选填)";
-    authorLabel.style.display = "block";
-    authorLabel.style.fontSize = "12px";
-    authorLabel.style.color = "rgba(255, 255, 255, 0.6)";
-    authorLabel.style.marginBottom = "6px";
-    const authorInput = document.createElement("input");
-    authorInput.type = "text";
-    authorInput.value = defaultAuthor;
-    authorInput.placeholder = "匿名大佬";
-    authorInput.style.width = "100%";
-    authorInput.style.padding = "10px 12px";
-    authorInput.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
-    authorInput.style.border = "1px solid rgba(255, 255, 255, 0.15)";
-    authorInput.style.borderRadius = "8px";
-    authorInput.style.color = "#fff";
-    authorInput.style.outline = "none";
-    authorInput.style.boxSizing = "border-box";
-    authorGroup.append(authorLabel, authorInput);
-
-    const descGroup = document.createElement("div");
-    descGroup.style.marginBottom = "24px";
-    const descLabel = document.createElement("label");
-    descLabel.textContent = "动作描述 (选填)";
-    descLabel.style.display = "block";
-    descLabel.style.fontSize = "12px";
-    descLabel.style.color = "rgba(255, 255, 255, 0.6)";
-    descLabel.style.marginBottom = "6px";
-    const descInput = document.createElement("textarea");
-    descInput.rows = 3;
-    descInput.placeholder = "简单介绍一下这个动作，让大家更喜欢它吧...";
-    descInput.style.width = "100%";
-    descInput.style.padding = "10px 12px";
-    descInput.style.backgroundColor = "rgba(255, 255, 255, 0.08)";
-    descInput.style.border = "1px solid rgba(255, 255, 255, 0.15)";
-    descInput.style.borderRadius = "8px";
-    descInput.style.color = "#fff";
-    descInput.style.outline = "none";
-    descInput.style.resize = "none";
-    descInput.style.boxSizing = "border-box";
-    descGroup.append(descLabel, descInput);
-
-    const btnGroup = document.createElement("div");
-    btnGroup.style.display = "flex";
-    btnGroup.style.gap = "12px";
-    btnGroup.style.justifyContent = "flex-end";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.type = "button";
-    cancelBtn.textContent = "取消";
-    cancelBtn.style.padding = "8px 16px";
-    cancelBtn.style.backgroundColor = "rgba(255, 255, 255, 0.05)";
-    cancelBtn.style.border = "1px solid rgba(255, 255, 255, 0.1)";
-    cancelBtn.style.borderRadius = "6px";
-    cancelBtn.style.color = "rgba(255, 255, 255, 0.8)";
-    cancelBtn.style.cursor = "pointer";
-    cancelBtn.style.fontSize = "14px";
-    cancelBtn.addEventListener("click", () => {
-      document.body.removeChild(overlay);
-      resolve(null);
-    });
-
-    const submitBtn = document.createElement("button");
-    submitBtn.type = "button";
-    submitBtn.textContent = "点击分享";
-    submitBtn.style.padding = "8px 20px";
-    submitBtn.style.backgroundColor = "#a855f7";
-    submitBtn.style.border = "none";
-    submitBtn.style.borderRadius = "6px";
-    submitBtn.style.color = "#fff";
-    submitBtn.style.cursor = "pointer";
-    submitBtn.style.fontSize = "14px";
-    submitBtn.style.fontWeight = "500";
-    submitBtn.addEventListener("click", () => {
-      const author = authorInput.value.trim() || "神秘宠物训练师";
-      const description = descInput.value.trim();
-      if (authorInput.value.trim()) {
-        localStorage.setItem("workshop_author", author);
-      }
-      document.body.removeChild(overlay);
-      resolve({ author, description });
-    });
-
-    btnGroup.append(cancelBtn, submitBtn);
-    modal.append(titleEl, nameGroup, authorGroup, descGroup, btnGroup);
-    overlay.append(modal);
-    document.body.append(overlay);
-  });
-
-  if (!shareMeta) return;
-
-  const { author: cleanAuthor } = shareMeta;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = framesCount * ATLAS_CELL_WIDTH;
-  canvas.height = ATLAS_CELL_HEIGHT;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  frames.forEach((frame, idx) => {
-    if (frame) ctx.drawImage(frame, idx * ATLAS_CELL_WIDTH, 0);
-  });
-
-  const base64DataUrl = canvas.toDataURL("image/webp", 0.95);
-  const base64Data = base64DataUrl.split(",", 2)[1];
-
-  const originalText = els.actionStripShare.textContent || "分享此动作到社区";
-  els.actionStripShare.disabled = true;
-  els.actionStripShare.textContent = "正在提交到云端...";
-  setStatus(els.editorStatus, "正在打包动作数据并上传至社区代理服务器...");
-
-  try {
-    const payload = {
-      petId: state.editorPet.id,
-      actionType: action.key,
-      title: defaultTitle,
-      author: cleanAuthor,
-      promptUsed: shareMeta.description,
-      framesCount,
-      frameDuration: action.frameDurations?.[0] || 120,
-      imageBufferBase64: base64Data
-    };
-
-    const response = await fetch(WORKSHOP_SHARE_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
-
-    showWorkshopSuccessDialog(
-      "分享提交成功",
-      "动作已上传到创意工坊仓库。",
-      "索引更新后即可在创意工坊列表中浏览和套用，感谢你的贡献。"
-    );
-    setStatus(els.editorStatus, "动作分享成功，等待社区索引更新。");
-  } catch (err) {
-    console.error(err);
-    window.alert(`动作分享失败：${err instanceof Error ? err.message : String(err)}\n请检查网络连接或稍后重试。`);
-    setStatus(els.editorStatus, `动作分享失败：${err instanceof Error ? err.message : String(err)}`, true);
-  } finally {
-    els.actionStripShare.disabled = false;
-    els.actionStripShare.textContent = originalText;
-  }
-}
-
 async function openSpriteEditor(pet: ProjectPet): Promise<void> {
   if (pet.builtin) {
     setStatus(els.mineStatus, "内置桌宠需要先导入到本地 pets 目录后再编辑。", true);
@@ -6074,7 +4761,6 @@ async function openSpriteEditor(pet: ProjectPet): Promise<void> {
 
 function renderSpriteEditorGrid(): void {
   normalizeEditorSelection();
-  updateWorkshopShareButtonState();
   const content = document.querySelector(".content");
   const contentTop = content?.scrollTop ?? 0;
   const gridTop = els.editorGrid.scrollTop;
@@ -6159,4 +4845,3 @@ function renderSpriteEditorGrid(): void {
     drawSelectedEditorFrame();
   }
 }
-
