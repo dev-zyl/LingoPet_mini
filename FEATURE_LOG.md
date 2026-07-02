@@ -28,3 +28,7 @@
 - Affected area: Config pet market refresh.
 - Completed behavior: Made the refresh button available on the market page and force it to reload the GitHub market index and preview manifest cache, so newly added market pets can appear without restarting the app.
 - Verification: Confirmed the local market index contains `yuexinmiao` and ran `npm run build`.
+
+- Affected area: Config local pets and market layout.
+- Completed behavior: Kept pagination fixed at the bottom of the local pets and market views while limiting vertical scrolling to the middle pet list area.
+- Verification: Ran `npm run build`.

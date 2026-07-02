@@ -363,6 +363,54 @@ body[data-view="settings"] .topbar {
   display: block;
 }
 
+body[data-view="mine"] .content,
+body[data-view="market"] .content {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
+}
+
+body[data-view="mine"] .topbar,
+body[data-view="market"] .topbar {
+  flex: 0 0 auto;
+}
+
+body[data-view="mine"] #mine-view.active,
+body[data-view="market"] #market-view.active {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+body[data-view="mine"] #my-pets-list,
+body[data-view="market"] #market-grid {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
+}
+
+body[data-view="mine"] #mine-pagination,
+body[data-view="market"] #market-pagination {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(216, 201, 173, 0.45);
+  background: var(--surface-page);
+}
+
+body[data-view="mine"] .view-sticky-controls,
+body[data-view="market"] .view-sticky-controls {
+  position: relative;
+  top: auto;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin-bottom: 12px;
+}
+
 .view-sticky-controls {
   position: sticky;
   top: 92px;
