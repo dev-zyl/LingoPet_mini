@@ -32,3 +32,7 @@
 - Affected area: Config local pets and market layout.
 - Completed behavior: Kept pagination fixed at the bottom of the local pets and market views while limiting vertical scrolling to the middle pet list area.
 - Verification: Ran `npm run build`.
+
+- Affected area: Config local pets and market list layout.
+- Completed behavior: Prevented filtered single-row pet lists from stretching to fill the entire scroll area after pagination was fixed.
+- Verification: Ran `npm run build`.

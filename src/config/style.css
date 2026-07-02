@@ -387,6 +387,8 @@ body[data-view="market"] #market-view.active {
 
 body[data-view="mine"] #my-pets-list,
 body[data-view="market"] #market-grid {
+  align-content: start;
+  grid-auto-rows: max-content;
   min-height: 0;
   overflow: auto;
   padding-right: 4px;
