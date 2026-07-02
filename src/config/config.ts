@@ -981,25 +981,28 @@ function normalizePreviewAnimations(raw: unknown): Record<string, FrameAnimation
 function defaultPreviewAnimations(): Record<string, FrameAnimation> {
   return {
     idle: { row: 0, frames: 6, frameDurations: [280, 110, 110, 140, 140, 320] },
-    walk: { row: 1, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
-    drag: { row: 2, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
-    touch: { row: 3, frames: 4, frameDurations: [140, 140, 140, 280] },
-    sleep: { row: 4, frames: 5, frameDurations: [140, 140, 140, 140, 280] },
-    jump: { row: 5, frames: 8, frameDurations: [140, 140, 140, 140, 140, 140, 140, 240] },
-    focus: { row: 6, frames: 6, frameDurations: [150, 150, 150, 150, 150, 260] },
-    music: { row: 7, frames: 6, frameDurations: [120, 120, 120, 120, 120, 220] },
-    merit: { row: 8, frames: 6, frameDurations: [150, 150, 150, 150, 150, 280] },
+    "running-right": { row: 1, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
+    "running-left": { row: 2, frames: 8, frameDurations: [120, 120, 120, 120, 120, 120, 120, 220] },
+    waving: { row: 3, frames: 4, frameDurations: [140, 140, 140, 280] },
+    jumping: { row: 4, frames: 5, frameDurations: [140, 140, 140, 140, 280] },
+    failed: { row: 5, frames: 8, frameDurations: [140, 140, 140, 140, 140, 140, 140, 240] },
+    waiting: { row: 6, frames: 6, frameDurations: [150, 150, 150, 150, 150, 260] },
+    running: { row: 7, frames: 6, frameDurations: [120, 120, 120, 120, 120, 220] },
+    review: { row: 8, frames: 6, frameDurations: [150, 150, 150, 150, 150, 280] },
   };
 }
 
 function previewActionLabel(key: string): string {
   const labels: Record<string, string> = {
     idle: "待机",
-    walk: "行走",
-    drag: "拖拽",
-    touch: "互动",
-    sleep: "睡觉",
-    jump: "跳跃",
+    "running-right": "向右跑",
+    "running-left": "向左跑",
+    waving: "挥手",
+    jumping: "跳跃",
+    failed: "失败",
+    waiting: "等待",
+    running: "奔跑",
+    review: "观察",
     focus: "专注",
     music: "律动",
     merit: "功德",
@@ -1008,9 +1011,29 @@ function previewActionLabel(key: string): string {
 }
 
 function previewActionOrder([key, animation]: [string, FrameAnimation]): number {
-  const baseOrder = ["idle", "walk", "drag", "touch", "sleep", "jump", "focus", "music", "merit"];
+  const baseOrder = ["idle", "running-right", "running-left", "waving", "jumping", "failed", "waiting", "running", "review", "focus", "music", "merit"];
   const index = baseOrder.indexOf(key);
-  return index >= 0 ? index : 100 + animation.row;
+  return animation.row * 10 + (index >= 0 ? index : 9);
+}
+
+function allPreviewAnimationEntries(manifestAnimations: Record<string, FrameAnimation>): Array<[string, FrameAnimation]> {
+  const entries = Object.entries(defaultPreviewAnimations());
+  const usedRows = new Set(entries.map(([, animation]) => animation.row));
+
+  Object.entries(manifestAnimations).forEach(([key, animation]) => {
+    const existingIndex = entries.findIndex(([existingKey]) => existingKey === key);
+    if (existingIndex >= 0) {
+      entries[existingIndex] = [key, animation];
+      usedRows.add(animation.row);
+      return;
+    }
+    if (!usedRows.has(animation.row)) {
+      entries.push([key, animation]);
+      usedRows.add(animation.row);
+    }
+  });
+
+  return entries.sort((a, b) => previewActionOrder(a) - previewActionOrder(b));
 }
 
 function loadMarketManifest(pet: MarketPet): Promise<PetPreviewManifest> {
@@ -1152,8 +1175,7 @@ function openMarketPetPreview(pet: MarketPet): void {
     .then((manifest) => {
       if (closed) return;
       const animations = normalizePreviewAnimations(manifest.animations);
-      const entries = Object.entries(Object.keys(animations).length ? animations : defaultPreviewAnimations())
-        .sort((a, b) => previewActionOrder(a) - previewActionOrder(b));
+      const entries = allPreviewAnimationEntries(animations);
 
       grid.replaceChildren();
       entries.forEach(([key, animation]) => {

@@ -16,3 +16,7 @@
 - Affected area: Config pet market preview.
 - Completed behavior: Added click-to-preview behavior on market pet avatars, showing all manifest actions in an animated preview dialog for both downloaded and remote market pets.
 - Verification: Ran `npm run build`.
+
+- Affected area: Config pet market preview.
+- Completed behavior: Updated the market action preview to always include the standard Codex 8x9 atlas actions and append manifest-defined extension actions, so pets with only custom modes in `pet.json` still show their full base action set.
+- Verification: Ran `npm run build`.
