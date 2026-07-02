@@ -814,7 +814,7 @@ textarea:focus {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 16px;
-  width: min(860px, calc(100vw - 40px));
+  width: min(980px, calc(100vw - 40px));
   max-height: min(760px, calc(100vh - 40px));
   padding: 18px;
   border: 1px solid #dfd1b5;
@@ -868,7 +868,7 @@ textarea:focus {
 
 .action-preview-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   min-height: 180px;
   overflow: auto;
@@ -886,6 +886,25 @@ textarea:focus {
   background:
     linear-gradient(#f3e4bf 1px, transparent 1px) 0 0 / 18px 18px,
     #fff6dc;
+}
+
+.action-preview-card.selectable {
+  width: 100%;
+  appearance: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.action-preview-card.selectable:hover,
+.action-preview-card.selectable:focus-visible {
+  border-color: #86b967;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(134, 185, 103, 0.2);
+}
+
+.action-preview-card.selected {
+  border-color: #6ca14f;
+  box-shadow: inset 0 0 0 2px rgba(108, 161, 79, 0.5), 0 10px 22px rgba(76, 60, 30, 0.1);
 }
 
 .action-preview-stage {
@@ -961,6 +980,12 @@ textarea:focus {
 
 .action-preview-status.error {
   color: #a44438;
+}
+
+@media (max-width: 720px) {
+  .action-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .pet-info {

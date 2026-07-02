@@ -20,3 +20,7 @@
 - Affected area: Config pet market preview.
 - Completed behavior: Updated the market action preview to always include the standard Codex 8x9 atlas actions and append manifest-defined extension actions, so pets with only custom modes in `pet.json` still show their full base action set.
 - Verification: Ran `npm run build`.
+
+- Affected area: Config pet action preview and local pet list.
+- Completed behavior: Renamed preview labels from failure/running to crying/working, changed the action preview dialog to a fixed four-column grid, and reused the action preview on the local pets list so clicking a local pet avatar can select which action is used as that pet's cover animation.
+- Verification: Ran `npm run build`.

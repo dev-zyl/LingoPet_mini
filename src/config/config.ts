@@ -145,6 +145,7 @@ const LS_PRIMARY_PET_ID = "pet_primary_project_id";
 const LS_SUMMONED_PET_IDS = "pet_summoned_pet_ids";
 const LS_FAVORITE_PET_IDS = "pet_favorite_pet_ids";
 const LS_CUSTOM_TAGS = "pet_custom_tags";
+const LS_PET_COVER_ACTIONS = "pet_cover_actions";
 const LS_PET_WINDOW_STATE_VERSION = "pet_window_state_version";
 const LS_PET_VOLUME = "pet-volume";
 const LS_SPEECH_BUBBLE_STYLE = "pet_speech_bubble_style";
@@ -897,7 +898,7 @@ function spriteFallbackText(title: string): string {
   return (trimmed.match(/[A-Za-z0-9]/)?.[0] || trimmed[0] || "?").toUpperCase();
 }
 
-function createSprite(url: string, title: string, options: { lazy?: boolean } = {}): HTMLDivElement {
+function createSprite(url: string, title: string, options: { lazy?: boolean; animation?: FrameAnimation } = {}): HTMLDivElement {
   const sprite = document.createElement("div");
   sprite.className = "sprite-preview";
   sprite.dataset.fallback = spriteFallbackText(title);
@@ -919,6 +920,26 @@ function createSprite(url: string, title: string, options: { lazy?: boolean } = 
       sprite.style.backgroundImage = `url("${url}")`;
       sprite.classList.add("is-loaded");
       sprite.classList.remove("is-loading", "is-fallback");
+      if (options.animation) {
+        sprite.style.animation = "none";
+        let frame = 0;
+        let timer = 0;
+        const scale = 464 / Math.max(1, image.naturalWidth || ATLAS_COLS * ATLAS_CELL_WIDTH);
+        const cellWidth = ATLAS_CELL_WIDTH * scale;
+        const cellHeight = ATLAS_CELL_HEIGHT * scale;
+        const showFrame = (): void => {
+          sprite.style.backgroundPosition = `${-(frame * cellWidth)}px ${-(options.animation!.row * cellHeight)}px`;
+        };
+        const step = (): void => {
+          frame = (frame + 1) % options.animation!.frames;
+          showFrame();
+          const delay = options.animation!.frameDurations[frame] ?? options.animation!.frameDurations[0] ?? 140;
+          timer = window.setTimeout(step, delay);
+        };
+        showFrame();
+        timer = window.setTimeout(step, options.animation.frameDurations[0] ?? 140);
+        sprite.addEventListener("remove", () => window.clearTimeout(timer), { once: true });
+      }
     };
     image.onerror = () => {
       sprite.classList.remove("is-loading");
@@ -999,9 +1020,9 @@ function previewActionLabel(key: string): string {
     "running-left": "向左跑",
     waving: "挥手",
     jumping: "跳跃",
-    failed: "失败",
+    failed: "哭泣",
     waiting: "等待",
-    running: "奔跑",
+    running: "工作",
     review: "观察",
     focus: "专注",
     music: "律动",
@@ -1034,6 +1055,33 @@ function allPreviewAnimationEntries(manifestAnimations: Record<string, FrameAnim
   });
 
   return entries.sort((a, b) => previewActionOrder(a) - previewActionOrder(b));
+}
+
+function getPetCoverActions(): Record<string, string> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LS_PET_COVER_ACTIONS) || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function petCoverActionKey(petId: string): string {
+  return getPetCoverActions()[petId] || "idle";
+}
+
+function setPetCoverActionKey(petId: string, actionKey: string): void {
+  const next = { ...getPetCoverActions(), [petId]: actionKey };
+  localStorage.setItem(LS_PET_COVER_ACTIONS, JSON.stringify(next));
+}
+
+function projectPetPreviewEntries(pet: ProjectPet): Array<[string, FrameAnimation]> {
+  return allPreviewAnimationEntries(normalizePreviewAnimations(pet.animations));
+}
+
+function projectPetCoverAnimation(pet: ProjectPet): FrameAnimation | undefined {
+  const selectedKey = petCoverActionKey(pet.id);
+  return projectPetPreviewEntries(pet).find(([key]) => key === selectedKey)?.[1];
 }
 
 function loadMarketManifest(pet: MarketPet): Promise<PetPreviewManifest> {
@@ -1108,6 +1156,12 @@ function createActionPreviewSprite(spriteUrl: string, title: string, animation: 
 
 function stopActionPreviewSprites(root: HTMLElement): void {
   root.querySelectorAll<HTMLElement>(".action-preview-sprite").forEach((sprite) => {
+    sprite.dispatchEvent(new Event("remove"));
+  });
+}
+
+function stopSpritePreviewTimers(root: HTMLElement): void {
+  root.querySelectorAll<HTMLElement>(".sprite-preview").forEach((sprite) => {
     sprite.dispatchEvent(new Event("remove"));
   });
 }
@@ -1204,6 +1258,96 @@ function openMarketPetPreview(pet: MarketPet): void {
       errorText.textContent = `动作读取失败：${error instanceof Error ? error.message : String(error)}`;
       grid.append(errorText);
     });
+}
+
+function openProjectPetPreview(pet: ProjectPet): void {
+  const spriteUrl = projectPetSpriteUrl(pet);
+  const overlay = document.createElement("div");
+  overlay.className = "action-preview-overlay";
+
+  const dialog = document.createElement("section");
+  dialog.className = "action-preview-dialog";
+  dialog.setAttribute("role", "dialog");
+  dialog.setAttribute("aria-modal", "true");
+  dialog.setAttribute("aria-labelledby", "project-action-preview-title");
+
+  const header = document.createElement("div");
+  header.className = "action-preview-header";
+
+  const copy = document.createElement("div");
+  const title = document.createElement("h3");
+  title.id = "project-action-preview-title";
+  title.textContent = pet.displayName;
+  const subtitle = document.createElement("p");
+  subtitle.textContent = `ID: ${pet.id} · 点击动作可设为封面`;
+  copy.append(title, subtitle);
+
+  const closeBtn = document.createElement("button");
+  closeBtn.className = "action-preview-close";
+  closeBtn.type = "button";
+  closeBtn.setAttribute("aria-label", "关闭");
+  closeBtn.textContent = "×";
+
+  const grid = document.createElement("div");
+  grid.className = "action-preview-grid";
+
+  let closed = false;
+  let selectedActionKey = petCoverActionKey(pet.id);
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    stopActionPreviewSprites(dialog);
+    document.removeEventListener("keydown", handleKeydown);
+    overlay.remove();
+  };
+  const handleKeydown = (event: KeyboardEvent): void => {
+    if (event.key === "Escape") close();
+  };
+
+  closeBtn.addEventListener("click", close);
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) close();
+  });
+  document.addEventListener("keydown", handleKeydown);
+
+  projectPetPreviewEntries(pet).forEach(([key, animation]) => {
+    const card = document.createElement("button");
+    card.className = "action-preview-card selectable";
+    card.type = "button";
+    card.classList.toggle("selected", key === selectedActionKey);
+    card.setAttribute("aria-pressed", String(key === selectedActionKey));
+    card.title = "设为我的桌宠封面动作";
+
+    const stage = document.createElement("div");
+    stage.className = "action-preview-stage";
+    stage.append(createActionPreviewSprite(spriteUrl, previewActionLabel(key), animation));
+
+    const name = document.createElement("strong");
+    name.textContent = previewActionLabel(key);
+    const meta = document.createElement("span");
+    meta.textContent = `${animation.frames} 帧`;
+
+    card.append(stage, name, meta);
+    card.addEventListener("click", () => {
+      selectedActionKey = key;
+      setPetCoverActionKey(pet.id, key);
+      grid.querySelectorAll<HTMLElement>(".action-preview-card.selected").forEach((item) => {
+        item.classList.remove("selected");
+        item.setAttribute("aria-pressed", "false");
+      });
+      card.classList.add("selected");
+      card.setAttribute("aria-pressed", "true");
+      renderMyPets();
+      setStatus(els.mineStatus, `已将「${pet.displayName}」封面动作设为「${previewActionLabel(key)}」。`);
+    });
+    grid.append(card);
+  });
+
+  header.append(copy, closeBtn);
+  dialog.append(header, grid);
+  overlay.append(dialog);
+  document.body.append(overlay);
+  closeBtn.focus();
 }
 
 function pageItems<T>(items: T[], page: number): T[] {
@@ -1317,6 +1461,7 @@ function renderListRow(options: {
   subtitle: string;
   spriteUrl: string;
   lazySprite?: boolean;
+  spriteAnimation?: FrameAnimation;
   onPreviewClick?: () => void;
   actions: HTMLElement[];
   titleExtra?: HTMLElement; // 新增的可选参数
@@ -1344,7 +1489,7 @@ function renderListRow(options: {
     preview.style.background = "none";
     preview.style.overflow = "hidden"; // 强力防溢出双保险
   } else {
-    preview.append(createSprite(options.spriteUrl, options.title, { lazy: options.lazySprite }));
+    preview.append(createSprite(options.spriteUrl, options.title, { lazy: options.lazySprite, animation: options.spriteAnimation }));
   }
 
   const info = document.createElement("div");
@@ -1415,6 +1560,7 @@ function preserveScroll(fn: () => void): void {
 
 function renderMarket(totalPets: number = getMarketTotalCount()): void {
   preserveScroll(() => {
+    stopSpritePreviewTimers(els.marketGrid);
     els.marketGrid.replaceChildren();
 
     if (state.marketPets.length === 0) {
@@ -1464,6 +1610,7 @@ function renderMyPets(): void {
     const pets = filteredProjectPets();
     const pages = Math.max(1, Math.ceil(pets.length / PAGE_SIZE));
     state.minePage = Math.min(state.minePage, pages);
+    stopSpritePreviewTimers(els.myPetsList);
     els.myPetsList.replaceChildren();
 
     const selectedTagCount = mineTagPetCount(state.currentMineTag);
@@ -1609,6 +1756,8 @@ function renderMyPets(): void {
         title: pet.displayName,
         subtitle: `${pet.id} · ${pet.version || "v1.0.0"}${pet.builtin ? " · 内置" : ""}`,
         spriteUrl: projectPetSpriteUrl(pet),
+        spriteAnimation: projectPetCoverAnimation(pet),
+        onPreviewClick: () => openProjectPetPreview(pet),
         actions: [summon, edit, remove],
         titleExtra,
         metaExtra: createPersonalActionBadges(pet),
