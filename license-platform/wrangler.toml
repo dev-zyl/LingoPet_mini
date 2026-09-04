@@ -5,7 +5,7 @@ pages_build_output_dir = "admin"
 [[d1_databases]]
 binding = "DB"
 database_name = "lingopet-licenses"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "979e94f7-107d-4691-bb12-362497467745"
 
 [vars]
 PRODUCT_ID = "LingoPet_mini"

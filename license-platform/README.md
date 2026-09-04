@@ -4,7 +4,7 @@ Cloudflare Pages Functions + D1 based activation code platform for LingoPet Mini
 
 ## Deploy
 
-1. Create a D1 database and replace `database_id` in `wrangler.toml`.
+1. A D1 database has been created for this project and its ID is configured in `wrangler.toml`.
 2. Apply the schema:
 
    ```bash
