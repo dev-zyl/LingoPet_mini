@@ -19,6 +19,12 @@
 - Completed behavior: Published 105 local pet packages, excluding the default Doro pet and the edit scratch directory, to `dev-zyl/LingoPet_mini_market` as `pet.json + spritesheet.webp` static assets with a generated market `index.json`.
 - Verification: Validated that the market index contains 105 pets, all referenced manifest/preview/spritesheet files exist, all generated manifests parse as JSON, and `npm run build` passes against the updated market repository constant.
 
+## 2026-09-04
+
+- Affected area: Cloudflare license distribution platform.
+- Completed behavior: Added a Cloudflare Pages Functions + D1 scaffold with admin-token protected batch activation-code generation, device limits, expiry dates, activation validation, and a responsive management page.
+- Verification: Ran `npm run typecheck` in `license-platform`.
+
 - Affected area: Config pet market preview.
 - Completed behavior: Added click-to-preview behavior on market pet avatars, showing all manifest actions in an animated preview dialog for both downloaded and remote market pets.
 - Verification: Ran `npm run build`.

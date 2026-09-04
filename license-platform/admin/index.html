@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LingoPet 授权台</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div class="brand-mark" aria-hidden="true">LP</div>
+      <div>
+        <p class="eyebrow">LINGOPET / LICENSE DESK</p>
+        <h1>授权台</h1>
+        <p class="subtitle">生成、分发和管理 LingoPet_mini 激活码。</p>
+      </div>
+      <div class="status-pill"><span></span><span id="health-text">等待连接</span></div>
+    </header>
+
+    <section class="workspace">
+      <div class="panel form-panel">
+        <div class="panel-heading"><span class="step">01</span><div><h2>批量生成</h2><p>激活码只在生成结果中显示一次，请及时导出。</p></div></div>
+        <label>管理员令牌<input id="admin-token" type="password" autocomplete="off" placeholder="输入 Cloudflare Secret 中的令牌" /></label>
+        <div class="form-grid">
+          <label>生成数量<input id="count" type="number" min="1" max="500" value="10" /></label>
+          <label>单码设备数<input id="devices" type="number" min="1" max="10" value="1" /></label>
+        </div>
+        <label>有效期 <span class="optional">留空表示永久</span><input id="expires" type="date" /></label>
+        <label>备注 <span class="optional">可选</span><input id="note" maxlength="200" placeholder="例如：内测批次 / 订单号" /></label>
+        <button id="generate" class="primary" type="button"><span>生成激活码</span><span aria-hidden="true">↗</span></button>
+        <p id="form-message" class="message" role="status"></p>
+      </div>
+
+      <div class="panel result-panel">
+        <div class="panel-heading"><span class="step">02</span><div><h2>本次生成</h2><p id="result-meta">还没有生成记录</p></div><button id="copy" class="ghost" type="button" disabled>复制全部</button></div>
+        <div id="results" class="results empty"><div class="empty-icon">⌁</div><p>生成后的激活码会出现在这里</p></div>
+      </div>
+    </section>
+
+    <section class="panel records-panel">
+      <div class="panel-heading"><span class="step">03</span><div><h2>授权记录</h2><p>最近 200 条记录，不显示激活码原文。</p></div><button id="refresh" class="ghost" type="button">刷新记录</button></div>
+      <div class="table-wrap"><table><thead><tr><th>授权编号</th><th>状态</th><th>设备上限</th><th>有效期</th><th>备注</th><th>创建时间</th></tr></thead><tbody id="records"><tr><td colspan="6" class="table-empty">输入管理员令牌后加载记录</td></tr></tbody></table></div>
+    </section>
+    <footer><span>Cloudflare Pages Functions + D1</span><span>私钥、管理员令牌请仅保存于 Cloudflare Secrets</span></footer>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

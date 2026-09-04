@@ -1,0 +1,12 @@
+{
+  "name": "lingopet-license-platform",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260904.1",
+    "typescript": "^6.0.2"
+  }
+}
