@@ -1359,6 +1359,56 @@ body {
   z-index: 1;
 }
 
+#salary-ticker {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: max-content;
+  max-width: 174px;
+  padding: 6px 9px;
+  border: 1px solid rgba(255, 235, 181, 0.48);
+  border-radius: 999px;
+  background: rgba(42, 38, 29, 0.76);
+  box-shadow: 0 4px 12px rgba(33, 27, 17, 0.22);
+  color: rgba(255, 248, 229, 0.74);
+  font: 700 10px/1 "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  pointer-events: none;
+  transform: translateX(-50%) scale(calc(1 / var(--pet-scale, 0.6)));
+  transform-origin: bottom center;
+  z-index: 5;
+}
+
+#salary-ticker[hidden] {
+  display: none;
+}
+
+.salary-ticker-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: #9fd178;
+  box-shadow: 0 0 0 3px rgba(159, 209, 120, 0.14);
+  animation: salary-live-pulse 1.8s ease-in-out infinite;
+}
+
+#salary-ticker-amount {
+  color: #fff0bf;
+  font-size: 13px;
+  font-weight: 850;
+}
+
+@keyframes salary-live-pulse {
+  0%,
+  100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+
 #pet-speech-bubble[data-bubble-style="2"] {
   background:
     url("../assets/ui/speech-bubble-style-2-ornaments.png") center / 100% 100% no-repeat,
@@ -1551,6 +1601,54 @@ body {
 #pet-speech-bubble.show-bubble {
   opacity: 1;
   transform: translateX(-50%) translateY(0) scale(var(--bubble-scale-factor, 1));
+}
+
+/* 功德模式：仿编辑页的窄幅提示牌，向上漂移并渐隐。 */
+#pet-speech-bubble.show-bubble.merit-floating-speech {
+  min-width: 0;
+  max-width: 220px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  color: #ffe9a6;
+  font-family: "STKaiti", "KaiTi", "Microsoft YaHei", sans-serif;
+  font-size: 19px;
+  font-weight: 950;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-shadow:
+    0 1px 0 rgba(107, 67, 21, 0.82),
+    0 2px 4px rgba(49, 29, 10, 0.22);
+  animation: merit-speech-float 1.55s cubic-bezier(0.2, 0.75, 0.35, 1) forwards;
+}
+
+#pet-speech-bubble.show-bubble.merit-floating-speech::after {
+  display: none;
+}
+
+#pet-speech-bubble.show-bubble.merit-floating-speech::before {
+  display: none;
+}
+
+@keyframes merit-speech-float {
+  0% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px) scale(calc(var(--bubble-scale-factor, 1) * 0.72));
+  }
+
+  16% {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0) scale(var(--bubble-scale-factor, 1.1));
+  }
+
+  100% {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-62px) scale(calc(var(--bubble-scale-factor, 1) * 0.92));
+  }
 }
 
 /* ── Context Menu ── */
@@ -4043,11 +4141,17 @@ body {
   height: 42px;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 14px;
   padding: 0 16px;
   border: 1px solid #dfd1b6;
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.62);
+}
+
+#focus-panel .focus-duration-part {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 #focus-panel .focus-word-wrap {
@@ -4073,6 +4177,23 @@ body {
   color: #332b21;
   font: 900 19px/1 "Cascadia Code", "Fira Code", "Consolas", monospace;
   text-align: right;
+}
+
+#focus-panel #focus-hours-input {
+  flex: 0 0 38px;
+  width: 38px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #332b21;
+  font: 900 19px/1 "Cascadia Code", "Fira Code", "Consolas", monospace;
+  text-align: right;
+}
+
+#focus-panel #focus-hours-input:focus {
+  box-shadow: none;
 }
 
 #focus-panel #focus-minutes-input:focus {

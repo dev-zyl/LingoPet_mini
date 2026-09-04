@@ -21,6 +21,11 @@
   </svg>
   <div id="pet-container">
     <div id="pet-speech-bubble"><span class="bubble-text"></span></div>
+    <div id="salary-ticker" aria-live="polite" hidden>
+      <span class="salary-ticker-dot" aria-hidden="true"></span>
+      <span class="salary-ticker-label">今日</span>
+      <strong id="salary-ticker-amount">¥0.00</strong>
+    </div>
     <div id="codex-status-badge" class="codex-status-badge offline" aria-live="polite" hidden>
       <span class="codex-status-dot" aria-hidden="true"></span>
       <span id="codex-status-text">Codex</span>
@@ -72,6 +77,16 @@
         </svg>
       </span>
       <span>专注模式</span>
+    </button>
+    <button id="context-salary" class="context-menu-item" type="button">
+      <span class="context-icon" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="12" r="8"></circle>
+          <path d="M15.5 8.5c-.8-.7-1.9-1.1-3.2-1.1-1.9 0-3.3.9-3.3 2.3 0 1.5 1.4 2 3.3 2.4 1.9.4 3.3.9 3.3 2.5 0 1.5-1.4 2.5-3.5 2.5-1.5 0-2.8-.5-3.7-1.4"></path>
+          <path d="M12 5.5v13"></path>
+        </svg>
+      </span>
+      <span>实时薪资</span>
     </button>
     <button id="context-merit" class="context-menu-item" type="button">
       <span class="context-icon" aria-hidden="true">
@@ -166,10 +181,16 @@
     </div>
 
     <div class="focus-input-row">
-      <label class="focus-input-wrap">
-        <input type="number" id="focus-minutes-input" min="1" max="240" value="25">
-        <span>分钟</span>
-      </label>
+      <div class="focus-input-wrap">
+        <label class="focus-duration-part">
+          <input type="number" id="focus-hours-input" min="0" max="4" value="0" aria-label="专注小时数">
+          <span>小时</span>
+        </label>
+        <label class="focus-duration-part">
+          <input type="number" id="focus-minutes-input" min="0" max="59" value="25" aria-label="专注分钟数">
+          <span>分钟</span>
+        </label>
+      </div>
     </div>
 
     <div class="focus-action-row">

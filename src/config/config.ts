@@ -152,6 +152,19 @@ const LS_SPEECH_BUBBLE_STYLE = "pet_speech_bubble_style";
 const LS_PET_GRAVITY_ENABLED = "pet_gravity_enabled";
 const LS_CODEX_MONITOR_ENABLED = "pet_codex_monitor_enabled";
 const LS_KEYBOARD_COMPANION_ENABLED = "pet_keyboard_companion_enabled";
+const LS_SALARY_SETTINGS = "pet_salary_settings";
+const LS_MANAGER_REQUESTED_SECTION = "pet_manager_requested_section";
+
+interface SalarySettings {
+  enabled: boolean;
+  monthlySalary: number;
+  workDays: number;
+  startTime: string;
+  endTime: string;
+  breakStart: string;
+  breakMinutes: number;
+  weekdaysOnly: boolean;
+}
 const BUILTIN_DORO_PET: ProjectPet = {
   id: "doro",
   displayName: "Doro",
@@ -287,6 +300,18 @@ const els = {
   gravityModeToggle: document.getElementById("gravity-mode-toggle") as HTMLInputElement,
   keyboardCompanionToggle: document.getElementById("keyboard-companion-toggle") as HTMLInputElement,
   codexMonitorToggle: document.getElementById("codex-monitor-toggle") as HTMLInputElement,
+  salaryEnabledToggle: document.getElementById("salary-enabled-toggle") as HTMLInputElement,
+  salaryMonthlyInput: document.getElementById("salary-monthly-input") as HTMLInputElement,
+  salaryWorkDaysInput: document.getElementById("salary-workdays-input") as HTMLInputElement,
+  salaryStartInput: document.getElementById("salary-start-input") as HTMLInputElement,
+  salaryEndInput: document.getElementById("salary-end-input") as HTMLInputElement,
+  salaryBreakStartInput: document.getElementById("salary-break-start-input") as HTMLInputElement,
+  salaryBreakMinutesInput: document.getElementById("salary-break-minutes-input") as HTMLInputElement,
+  salaryWeekdaysOnlyToggle: document.getElementById("salary-weekdays-only-toggle") as HTMLInputElement,
+  salaryPreview: document.getElementById("salary-preview") as HTMLDivElement,
+  salaryPreviewRate: document.getElementById("salary-preview-rate") as HTMLElement,
+  salaryPreviewDaily: document.getElementById("salary-preview-daily") as HTMLElement,
+  salarySave: document.getElementById("salary-save-btn") as HTMLButtonElement,
   petInstanceModeRadios: [...document.querySelectorAll<HTMLInputElement>('input[name="pet-instance-mode"]')],
   petActivityLevelRadios: [...document.querySelectorAll<HTMLInputElement>('input[name="pet-activity-level"]')],
   musicRhythmSyncRadios: [...document.querySelectorAll<HTMLInputElement>('input[name="music-rhythm-sync"]')],
@@ -2775,6 +2800,92 @@ function updateBubbleStyleControls(value: string): void {
   }
 }
 
+const DEFAULT_SALARY_SETTINGS: SalarySettings = {
+  enabled: false,
+  monthlySalary: 0,
+  workDays: 22,
+  startTime: "09:00",
+  endTime: "18:00",
+  breakStart: "12:00",
+  breakMinutes: 60,
+  weekdaysOnly: true,
+};
+
+function parseSalarySettings(): SalarySettings {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_SALARY_SETTINGS) || "{}") as Partial<SalarySettings>;
+    return {
+      enabled: saved.enabled === true,
+      monthlySalary: Math.max(0, Number(saved.monthlySalary) || 0),
+      workDays: Math.min(31, Math.max(1, Math.round(Number(saved.workDays) || DEFAULT_SALARY_SETTINGS.workDays))),
+      startTime: /^\d{2}:\d{2}$/.test(saved.startTime || "") ? saved.startTime! : DEFAULT_SALARY_SETTINGS.startTime,
+      endTime: /^\d{2}:\d{2}$/.test(saved.endTime || "") ? saved.endTime! : DEFAULT_SALARY_SETTINGS.endTime,
+      breakStart: /^\d{2}:\d{2}$/.test(saved.breakStart || "") ? saved.breakStart! : DEFAULT_SALARY_SETTINGS.breakStart,
+      breakMinutes: Math.min(480, Math.max(0, Math.round(Number(saved.breakMinutes) || 0))),
+      weekdaysOnly: saved.weekdaysOnly !== false,
+    };
+  } catch {
+    return { ...DEFAULT_SALARY_SETTINGS };
+  }
+}
+
+function timeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+}
+
+function salaryWorkSeconds(settings: SalarySettings): number {
+  const start = timeToMinutes(settings.startTime);
+  const end = timeToMinutes(settings.endTime);
+  const breakStart = timeToMinutes(settings.breakStart);
+  const breakEnd = breakStart + settings.breakMinutes;
+  const breakOverlap = Math.max(0, Math.min(end, breakEnd) - Math.max(start, breakStart));
+  return Math.max(0, (end - start - breakOverlap) * 60);
+}
+
+function formatCurrency(value: number): string {
+  return `¥${new Intl.NumberFormat("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Math.max(0, value))}`;
+}
+
+function renderSalaryPreview(settings = salarySettingsFromInputs()): void {
+  const workSeconds = salaryWorkSeconds(settings);
+  const dailyAmount = settings.monthlySalary / settings.workDays;
+  const secondRate = workSeconds > 0 ? dailyAmount / workSeconds : 0;
+  els.salaryPreviewRate.textContent = workSeconds > 0 && settings.monthlySalary > 0
+    ? `${formatCurrency(secondRate)} / 秒`
+    : "填写薪资后显示秒薪";
+  els.salaryPreviewDaily.textContent = settings.monthlySalary > 0
+    ? `每个工作日约 ${formatCurrency(dailyAmount)}，每日有效计薪 ${Math.round(workSeconds / 60)} 分钟`
+    : "按实际有效工作时长计算，午休不计入。";
+  els.salaryPreview.classList.toggle("is-ready", settings.monthlySalary > 0 && workSeconds > 0);
+}
+
+function salarySettingsFromInputs(): SalarySettings {
+  return {
+    enabled: els.salaryEnabledToggle.checked,
+    monthlySalary: Math.max(0, Number(els.salaryMonthlyInput.value) || 0),
+    workDays: Math.min(31, Math.max(1, Math.round(Number(els.salaryWorkDaysInput.value) || 22))),
+    startTime: els.salaryStartInput.value || DEFAULT_SALARY_SETTINGS.startTime,
+    endTime: els.salaryEndInput.value || DEFAULT_SALARY_SETTINGS.endTime,
+    breakStart: els.salaryBreakStartInput.value || DEFAULT_SALARY_SETTINGS.breakStart,
+    breakMinutes: Math.min(480, Math.max(0, Math.round(Number(els.salaryBreakMinutesInput.value) || 0))),
+    weekdaysOnly: els.salaryWeekdaysOnlyToggle.checked,
+  };
+}
+
+function loadSalarySettings(): void {
+  const settings = parseSalarySettings();
+  els.salaryEnabledToggle.checked = settings.enabled;
+  els.salaryMonthlyInput.value = settings.monthlySalary ? String(settings.monthlySalary) : "";
+  els.salaryWorkDaysInput.value = String(settings.workDays);
+  els.salaryStartInput.value = settings.startTime;
+  els.salaryEndInput.value = settings.endTime;
+  els.salaryBreakStartInput.value = settings.breakStart;
+  els.salaryBreakMinutesInput.value = String(settings.breakMinutes);
+  els.salaryWeekdaysOnlyToggle.checked = settings.weekdaysOnly;
+  renderSalaryPreview(settings);
+}
+
 async function loadSettings(): Promise<void> {
   els.autostartToggle.checked = await isEnabled().catch(() => false);
   els.alwaysTopToggle.checked = localStorage.getItem("pet-always-on-top") !== "false";
@@ -2798,6 +2909,7 @@ async function loadSettings(): Promise<void> {
   els.chatMode.value = localStorage.getItem(LS_CHAT_MODE) || "basic";
   els.persona.value = localStorage.getItem(LS_PERSONA_MODE) || "tsundere";
   updateBubbleStyleControls(localStorage.getItem(LS_SPEECH_BUBBLE_STYLE) || "1");
+  loadSalarySettings();
   els.customPersona.value = localStorage.getItem(LS_CUSTOM_PERSONA) || "";
   els.apiEndpoint.value = localStorage.getItem(LS_API_ENDPOINT) || "";
   els.apiModel.value = localStorage.getItem(LS_API_MODEL) || "gpt-3.5-turbo";
@@ -2952,6 +3064,32 @@ els.keyboardCompanionToggle.addEventListener("change", () => {
 });
 els.codexMonitorToggle.addEventListener("change", () => {
   localStorage.setItem(LS_CODEX_MONITOR_ENABLED, String(els.codexMonitorToggle.checked));
+});
+[
+  els.salaryEnabledToggle,
+  els.salaryMonthlyInput,
+  els.salaryWorkDaysInput,
+  els.salaryStartInput,
+  els.salaryEndInput,
+  els.salaryBreakStartInput,
+  els.salaryBreakMinutesInput,
+  els.salaryWeekdaysOnlyToggle,
+].forEach((input) => input.addEventListener("input", () => renderSalaryPreview()));
+els.salarySave.addEventListener("click", () => {
+  const settings = salarySettingsFromInputs();
+  const workSeconds = salaryWorkSeconds(settings);
+  if (settings.enabled && settings.monthlySalary <= 0) {
+    showMessage("请先填写大于 0 的月薪。", "error");
+    els.salaryMonthlyInput.focus();
+    return;
+  }
+  if (settings.enabled && workSeconds <= 0) {
+    showMessage("请检查上下班与午休时间，当前没有有效计薪时长。", "error");
+    return;
+  }
+  localStorage.setItem(LS_SALARY_SETTINGS, JSON.stringify(settings));
+  renderSalaryPreview(settings);
+  showMessage(settings.enabled ? "实时薪资已保存，工作时间会显示在桌宠旁。" : "实时薪资已保存为关闭状态。", "success");
 });
 els.petInstanceModeRadios.forEach((radio) => {
   radio.addEventListener("change", async () => {
@@ -3409,6 +3547,14 @@ void loadCustomTags().then(() => loadProjectPets());
 void fetchMarketPets();
 void loadSettings();
 void loadActivePets();
+
+if (localStorage.getItem(LS_MANAGER_REQUESTED_SECTION) === "salary") {
+  localStorage.removeItem(LS_MANAGER_REQUESTED_SECTION);
+  setView("settings");
+  window.requestAnimationFrame(() => {
+    document.getElementById("salary-settings")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+}
 
 // 动态设置气泡卡片背景，彻底修复 Tauri 打包生产环境下 CSS 相对路径丢失的问题
 function initBubblePreviewImages(): void {

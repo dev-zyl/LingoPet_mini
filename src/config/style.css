@@ -2695,6 +2695,85 @@ textarea {
   color: var(--text-muted);
 }
 
+.salary-settings {
+  scroll-margin-top: 18px;
+}
+
+.salary-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px 14px;
+  padding: 14px 0;
+  border-top: 1px solid #f0e8d8;
+}
+
+.salary-form-grid label {
+  display: grid;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.salary-form-grid input {
+  width: 100%;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-card);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.salary-form-grid input:focus {
+  border-color: var(--moss);
+  box-shadow: 0 0 0 3px rgba(93, 152, 71, 0.14);
+}
+
+.salary-weekday-row {
+  border-bottom: 0;
+}
+
+.salary-preview {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  padding: 14px 16px;
+  border-left: 3px solid #d8cdb7;
+  background: #faf7f0;
+  color: var(--text-muted);
+}
+
+.salary-preview strong {
+  color: #766c5c;
+  font-size: 19px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.salary-preview.is-ready {
+  border-left-color: var(--gold);
+  background: #fffaf0;
+}
+
+.salary-preview.is-ready strong {
+  color: #b17a16;
+}
+
+.salary-preview span {
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.salary-save-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
 .storage-path-row {
   align-items: center;
   border-top: 0;
@@ -2968,6 +3047,10 @@ textarea {
 
   .settings-panel textarea {
     min-height: 82px;
+  }
+
+  .salary-form-grid {
+    gap: 10px 12px;
   }
 
   .storage-path-row .path-text {

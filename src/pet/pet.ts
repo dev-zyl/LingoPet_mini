@@ -734,8 +734,126 @@ const LS_SUMMONED_PET_IDS = "pet_summoned_pet_ids";
 const LS_PET_ASSETS_VERSION = "pet_assets_version";
 const LS_PET_EXTERNAL_SPEECH = "pet_external_speech";
 const LS_PET_WINDOW_STATE_VERSION = "pet_window_state_version";
+const LS_SALARY_SETTINGS = "pet_salary_settings";
+const LS_MANAGER_REQUESTED_SECTION = "pet_manager_requested_section";
 const DEFAULT_FOCUS_DISPLAY_TEXT = "专注中";
 let apiKeyMigrationWarned = false;
+
+interface SalarySettings {
+  enabled: boolean;
+  monthlySalary: number;
+  workDays: number;
+  startTime: string;
+  endTime: string;
+  breakStart: string;
+  breakMinutes: number;
+  weekdaysOnly: boolean;
+}
+
+const DEFAULT_SALARY_SETTINGS: SalarySettings = {
+  enabled: false,
+  monthlySalary: 0,
+  workDays: 22,
+  startTime: "09:00",
+  endTime: "18:00",
+  breakStart: "12:00",
+  breakMinutes: 60,
+  weekdaysOnly: true,
+};
+let salaryTickerTimerId: ReturnType<typeof setInterval> | null = null;
+
+function getSalarySettings(): SalarySettings {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LS_SALARY_SETTINGS) || "{}") as Partial<SalarySettings>;
+    return {
+      enabled: saved.enabled === true,
+      monthlySalary: Math.max(0, Number(saved.monthlySalary) || 0),
+      workDays: Math.min(31, Math.max(1, Math.round(Number(saved.workDays) || DEFAULT_SALARY_SETTINGS.workDays))),
+      startTime: /^\d{2}:\d{2}$/.test(saved.startTime || "") ? saved.startTime! : DEFAULT_SALARY_SETTINGS.startTime,
+      endTime: /^\d{2}:\d{2}$/.test(saved.endTime || "") ? saved.endTime! : DEFAULT_SALARY_SETTINGS.endTime,
+      breakStart: /^\d{2}:\d{2}$/.test(saved.breakStart || "") ? saved.breakStart! : DEFAULT_SALARY_SETTINGS.breakStart,
+      breakMinutes: Math.min(480, Math.max(0, Math.round(Number(saved.breakMinutes) || 0))),
+      weekdaysOnly: saved.weekdaysOnly !== false,
+    };
+  } catch {
+    return { ...DEFAULT_SALARY_SETTINGS };
+  }
+}
+
+function salaryTimeToMinutes(value: string): number {
+  const [hours, minutes] = value.split(":").map(Number);
+  return Number.isFinite(hours) && Number.isFinite(minutes) ? hours * 60 + minutes : 0;
+}
+
+function formatSalaryCurrency(value: number): string {
+  return `¥${Math.max(0, value).toFixed(2)}`;
+}
+
+interface SalaryTickerSnapshot {
+  amount: number;
+  rate: number;
+  label: string;
+  detail: string;
+}
+
+function getSalaryTickerSnapshot(now = new Date()): SalaryTickerSnapshot | null {
+  const settings = getSalarySettings();
+  if (!settings.enabled || settings.monthlySalary <= 0) return null;
+
+  const startMinutes = salaryTimeToMinutes(settings.startTime);
+  const endMinutes = salaryTimeToMinutes(settings.endTime);
+  const breakStartMinutes = salaryTimeToMinutes(settings.breakStart);
+  const breakEndMinutes = breakStartMinutes + settings.breakMinutes;
+  const currentMinutes = now.getHours() * 60 + now.getMinutes() + now.getSeconds() / 60 + now.getMilliseconds() / 60_000;
+  const fullBreakMinutes = Math.max(0, Math.min(endMinutes, breakEndMinutes) - Math.max(startMinutes, breakStartMinutes));
+  const workMinutes = endMinutes - startMinutes - fullBreakMinutes;
+  if (endMinutes <= startMinutes || workMinutes <= 0) return null;
+
+  const dailySalary = settings.monthlySalary / settings.workDays;
+  const rate = dailySalary / (workMinutes * 60);
+  if (settings.weekdaysOnly && (now.getDay() === 0 || now.getDay() === 6)) {
+    return { amount: 0, rate, label: "实时薪资", detail: "周末暂停" };
+  }
+
+  const effectiveNow = Math.min(Math.max(currentMinutes, startMinutes), endMinutes);
+  const elapsedMinutes = effectiveNow - startMinutes;
+  const elapsedBreakMinutes = Math.max(0, Math.min(effectiveNow, breakEndMinutes) - Math.max(startMinutes, breakStartMinutes));
+  const paidSeconds = Math.max(0, (elapsedMinutes - elapsedBreakMinutes) * 60);
+  if (currentMinutes < startMinutes) {
+    return { amount: 0, rate, label: "实时薪资", detail: "未上班" };
+  }
+  if (currentMinutes >= breakStartMinutes && currentMinutes < breakEndMinutes) {
+    return { amount: paidSeconds * rate, rate, label: "今日", detail: "午休中" };
+  }
+  if (currentMinutes >= endMinutes) {
+    return { amount: dailySalary, rate, label: "今日", detail: "已下班" };
+  }
+  return { amount: paidSeconds * rate, rate, label: "今日", detail: `${formatSalaryCurrency(rate)} / 秒` };
+}
+
+function updateSalaryTicker(): void {
+  const ticker = document.getElementById("salary-ticker") as HTMLElement | null;
+  const amount = document.getElementById("salary-ticker-amount");
+  if (!ticker || !amount) return;
+
+  const label = ticker.querySelector(".salary-ticker-label");
+  const hasSpeech = document.getElementById("pet-speech-bubble")?.classList.contains("show-bubble") || false;
+  const snapshot = getCurrentWindow().label === "pet" && !hasSpeech ? getSalaryTickerSnapshot() : null;
+  ticker.hidden = !snapshot;
+  if (!snapshot) return;
+
+  amount.textContent = formatSalaryCurrency(snapshot.amount);
+  if (label) label.textContent = snapshot.label;
+  ticker.title = `今日已赚 ${formatSalaryCurrency(snapshot.amount)}`;
+}
+
+function setupSalaryTicker(): void {
+  updateSalaryTicker();
+  salaryTickerTimerId = window.setInterval(updateSalaryTicker, 1000);
+  window.addEventListener("storage", (event) => {
+    if (event.key === LS_SALARY_SETTINGS) updateSalaryTicker();
+  });
+}
 
 function getPrimaryPetId(): string {
   const saved = localStorage.getItem(LS_PRIMARY_PET_ID);
@@ -963,9 +1081,35 @@ function setupSizePanel(): void {
 
 function formatFocusRemaining(ms: number): string {
   const totalSeconds = Math.max(0, Math.ceil(ms / 1000));
+  if (totalSeconds > 60 * 60) {
+    return formatFocusDuration(Math.ceil(totalSeconds / 60));
+  }
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = totalSeconds % 60;
   return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+}
+
+function formatFocusDuration(minutes: number): string {
+  const safeMinutes = Math.max(1, Math.round(minutes));
+  if (safeMinutes <= 60) return `${safeMinutes}分钟`;
+  const hours = Math.floor(safeMinutes / 60);
+  const remainder = safeMinutes % 60;
+  return remainder > 0 ? `${hours}小时${remainder}分钟` : `${hours}小时`;
+}
+
+function focusDurationFromInputs(hoursInput: HTMLInputElement, minutesInput: HTMLInputElement): number {
+  const hours = Math.min(4, Math.max(0, Math.round(Number(hoursInput.value) || 0)));
+  const minutes = Math.min(59, Math.max(0, Math.round(Number(minutesInput.value) || 0)));
+  return Math.min(240, Math.max(1, hours * 60 + minutes));
+}
+
+function syncFocusDurationInputs(minutes: number): void {
+  const hoursInput = document.getElementById("focus-hours-input") as HTMLInputElement | null;
+  const minutesInput = document.getElementById("focus-minutes-input") as HTMLInputElement | null;
+  if (!hoursInput || !minutesInput) return;
+  const safeMinutes = Math.min(240, Math.max(1, Math.round(minutes)));
+  hoursInput.value = String(Math.floor(safeMinutes / 60));
+  minutesInput.value = String(safeMinutes % 60);
 }
 
 function getFocusDisplayText(): string {
@@ -984,7 +1128,10 @@ function updateFocusStatusText(text: string): void {
 function updateFocusPanelState(remainingMs: number, running: boolean): void {
   updateFocusStatusText(formatFocusRemaining(remainingMs));
   const label = document.getElementById("focus-state-label");
-  if (label) label.textContent = running ? "工作中，桌宠会保持安静" : "准备开始";
+  const caption = document.querySelector(".focus-ring-caption");
+  const remainingMinutes = Math.max(1, Math.ceil(Math.max(0, remainingMs) / 60_000));
+  if (caption) caption.textContent = "剩余时间";
+  if (label) label.textContent = running ? "工作中，桌宠会保持安静" : `准备开始 · ${formatFocusDuration(remainingMinutes)}`;
 
   const bar = document.getElementById("focus-progress-bar") as HTMLElement | null;
   if (bar) {
@@ -1135,7 +1282,7 @@ function startFocusMode(minutes: number, engine: PetEngine): void {
   lastPetInteractionTime = Date.now();
   lastActivityTime = Date.now();
   engine.applyState(engine.hasState("focus") ? "focus" : "review");
-  showSpeech(`专注 ${duration} 分钟，开始工作`, 2600);
+  showSpeech(`专注 ${formatFocusDuration(duration)}，开始工作`, 2600);
   syncFocusPresetButtons(duration);
 
   focusIntervalId = setInterval(() => {
@@ -1263,10 +1410,10 @@ async function showFocusPanel(): Promise<void> {
   const displayInput = document.getElementById("focus-display-input") as HTMLInputElement | null;
   if (!panel || !input) return;
 
-  input.value = localStorage.getItem(LS_FOCUS_MINUTES) || input.value || "25";
+  const savedMinutes = Math.min(240, Math.max(1, Math.round(Number(localStorage.getItem(LS_FOCUS_MINUTES)) || 25)));
+  syncFocusDurationInputs(savedMinutes);
   if (displayInput) displayInput.value = localStorage.getItem(LS_FOCUS_DISPLAY_TEXT) || "";
-  const minutes = Math.min(240, Math.max(1, Math.round(Number(input.value) || 25)));
-  input.value = String(minutes);
+  const minutes = savedMinutes;
   syncFocusPresetButtons(minutes);
   updateFocusPanelState(isFocusMode ? getFocusRemainingMs() : minutes * 60_000, isFocusMode);
   await expandFocusPanelWindow();
@@ -1342,6 +1489,7 @@ const MERIT_DEFAULT_TEXT = "功德";
 const MERIT_BADGE_THRESHOLDS = [100, 500, 1000] as const;
 let isMeritMode = false;
 let meritIntervalId: ReturnType<typeof setInterval> | null = null;
+let meritSpeechTimerId: ReturnType<typeof setTimeout> | null = null;
 let isMeritPanelOpen = false; // 是否开启了功德大面板
 
 function getMeritSign(): string {
@@ -1640,9 +1788,23 @@ function triggerFallbackMeritHit(container: HTMLElement | null): void {
 }
 
 function showMeritHitSpeech(text: string): void {
-  const intervalMs = Math.round(1000 / getMeritFreq());
-  const durationMs = clamp(Math.round(intervalMs * 0.45), 120, 420);
-  showSpeech(text, durationMs, false);
+  const bubble = document.getElementById("pet-speech-bubble");
+  if (!bubble) return;
+
+  if (meritSpeechTimerId) {
+    clearTimeout(meritSpeechTimerId);
+    meritSpeechTimerId = null;
+  }
+
+  // 功德提示使用独立的轻提示动画，避免普通气泡被高频敲击立即覆盖。
+  showSpeech(text, 1500, false);
+  bubble.classList.remove("merit-floating-speech");
+  void bubble.offsetWidth;
+  bubble.classList.add("merit-floating-speech");
+  meritSpeechTimerId = window.setTimeout(() => {
+    bubble.classList.remove("merit-floating-speech");
+    meritSpeechTimerId = null;
+  }, 1500);
 }
 
 function getMeritSoundFrame(engine: PetEngine): number {
@@ -2172,23 +2334,25 @@ function setupFocusPanel(engine: PetEngine): void {
   const panel = document.getElementById("focus-panel") as HTMLElement | null;
   if (panel) ensureFocusPanelLayout(panel);
   const input = document.getElementById("focus-minutes-input") as HTMLInputElement | null;
+  const hoursInput = document.getElementById("focus-hours-input") as HTMLInputElement | null;
   const displayInput = document.getElementById("focus-display-input") as HTMLInputElement | null;
   const startBtn = document.getElementById("focus-start") as HTMLButtonElement | null;
   const pauseBtn = document.getElementById("focus-pause") as HTMLButtonElement | null;
   const resetBtn = document.getElementById("focus-reset") as HTMLButtonElement | null;
   const closeBtn = document.getElementById("focus-close") as HTMLButtonElement | null;
-  if (!panel || !input || !displayInput || !startBtn || !pauseBtn || !resetBtn || !closeBtn) return;
+  if (!panel || !input || !hoursInput || !displayInput || !startBtn || !pauseBtn || !resetBtn || !closeBtn) return;
 
-  input.value = localStorage.getItem(LS_FOCUS_MINUTES) || "25";
+  const savedMinutes = Math.min(240, Math.max(1, Math.round(Number(localStorage.getItem(LS_FOCUS_MINUTES)) || 25)));
+  syncFocusDurationInputs(savedMinutes);
   displayInput.value = localStorage.getItem(LS_FOCUS_DISPLAY_TEXT) || "";
-  syncFocusPresetButtons(Number(input.value) || 25);
-  updateFocusPanelState((Number(input.value) || 25) * 60_000, false);
+  syncFocusPresetButtons(savedMinutes);
+  updateFocusPanelState(savedMinutes * 60_000, false);
 
   document.querySelectorAll<HTMLButtonElement>(".focus-preset").forEach((button) => {
     button.addEventListener("click", () => {
       if (isFocusMode) return;
       const minutes = Number(button.dataset.focusMinutes) || 25;
-      input.value = String(minutes);
+      syncFocusDurationInputs(minutes);
       localStorage.setItem(LS_FOCUS_MINUTES, String(minutes));
       syncFocusPresetButtons(minutes);
       updateFocusPanelState(minutes * 60_000, false);
@@ -2196,14 +2360,17 @@ function setupFocusPanel(engine: PetEngine): void {
     });
   });
 
-  input.addEventListener("input", () => {
+  const durationInputHandler = (): void => {
     if (isFocusMode) return;
-    const minutes = Math.min(240, Math.max(1, Math.round(Number(input.value) || 25)));
+    const minutes = focusDurationFromInputs(hoursInput, input);
+    syncFocusDurationInputs(minutes);
     localStorage.setItem(LS_FOCUS_MINUTES, String(minutes));
     syncFocusPresetButtons(minutes);
     updateFocusPanelState(minutes * 60_000, false);
     lastPetInteractionTime = Date.now();
-  });
+  };
+  input.addEventListener("input", durationInputHandler);
+  hoursInput.addEventListener("input", durationInputHandler);
 
   displayInput.addEventListener("input", () => {
     const text = displayInput.value.trim();
@@ -2221,7 +2388,7 @@ function setupFocusPanel(engine: PetEngine): void {
     } else if (isFocusMode) {
       endFocusMode(engine, false);
     } else {
-      const minutes = Number(input.value) || 25;
+      const minutes = focusDurationFromInputs(hoursInput, input);
       startFocusMode(minutes, engine);
     }
   });
@@ -4577,12 +4744,13 @@ async function setupContextMenu(engine: PetEngine): Promise<void> {
   const reminderButton = document.getElementById("context-reminder") as HTMLButtonElement | null;
   const todoButton = document.getElementById("context-todo") as HTMLButtonElement | null;
   const focusButton = document.getElementById("context-focus") as HTMLButtonElement | null;
+  const salaryButton = document.getElementById("context-salary") as HTMLButtonElement | null;
   const meritButton = document.getElementById("context-merit") as HTMLButtonElement | null;
   const musicButton = document.getElementById("context-music") as HTMLButtonElement | null;
   const catWalkButton = document.getElementById("context-cat-walk") as HTMLButtonElement | null;
   const recallButton = document.getElementById("context-recall") as HTMLButtonElement | null;
   const quitButton = document.getElementById("context-quit") as HTMLButtonElement | null;
-  if (!hitbox || !menu || !managerButton || !reminderButton || !todoButton || !focusButton || !meritButton || !musicButton || !catWalkButton || !recallButton || !quitButton) return;
+  if (!hitbox || !menu || !managerButton || !reminderButton || !todoButton || !focusButton || !salaryButton || !meritButton || !musicButton || !catWalkButton || !recallButton || !quitButton) return;
 
   // Apply persisted always-on-top state on startup
   await appWindow.setAlwaysOnTop(isAlwaysOnTop);
@@ -4725,6 +4893,12 @@ async function setupContextMenu(engine: PetEngine): Promise<void> {
   focusButton.addEventListener("click", () => {
     hideMenu();
     void showFocusPanel();
+  });
+
+  salaryButton.addEventListener("click", () => {
+    hideMenu();
+    localStorage.setItem(LS_MANAGER_REQUESTED_SECTION, "salary");
+    void invoke("open_manager_window");
   });
 
   meritButton.addEventListener("click", () => {
@@ -4946,12 +5120,14 @@ function showSpeech(text: string, durationMs: number, withSound = false): void {
   applySpeechBubbleStyle();
   bubbleText.textContent = text;
   bubble.classList.add("show-bubble");
+  updateSalaryTicker();
   if (withSound) playSound("bubble");
 
   void updateSpeechBubbleWindowState(true);
 
   (window as any).speechBubbleTimerId = setTimeout(() => {
     bubble.classList.remove("show-bubble");
+    updateSalaryTicker();
     (window as any).speechBubbleTimerId = null;
     void updateSpeechBubbleWindowState(false);
   }, durationMs);
@@ -5287,6 +5463,7 @@ async function main(): Promise<void> {
   setupManagerSettingsSync();
   setupCodexMonitor(engine);
   setupKeyboardCompanion(engine);
+  setupSalaryTicker();
   setupVolumePanel();
   setupSizePanel();
   setupFocusPanel(engine);
@@ -5298,6 +5475,10 @@ async function main(): Promise<void> {
   void restoreSavedSummonedPets();
 
   const stopActivitiesOnWindowExit = () => {
+    if (salaryTickerTimerId) {
+      clearInterval(salaryTickerTimerId);
+      salaryTickerTimerId = null;
+    }
     if (keyboardCompanionTimerId !== null) {
       window.clearInterval(keyboardCompanionTimerId);
       keyboardCompanionTimerId = null;
